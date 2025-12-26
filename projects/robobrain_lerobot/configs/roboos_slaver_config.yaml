@@ -1,6 +1,6 @@
 robot:
   name: so101
   call_type: remote
-  path: "http://<robot_ip>:8000"
+  path: "http://127.0.0.1:8000"  # replace with the robot host if remote
 tool:
   support_tool_calls: true   # 如果你的模型/模板走工具调用解析链路

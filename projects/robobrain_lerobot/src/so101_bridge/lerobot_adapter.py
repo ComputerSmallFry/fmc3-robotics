@@ -2,9 +2,14 @@
 from typing import Any, Dict, List, Optional, Literal
 import time
 import base64
+from pathlib import Path
 import numpy as np
 import cv2
 import yaml
+
+from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
+from lerobot.robots.so101_follower import SO101Follower, SO101FollowerConfig
+from so101_bridge.dataset_adapter import So101DatasetAdapter
 
 class So101LeRobotAdapter:
     def __init__(self, robot_config_path: str, camera_name: str, enable_camera: bool):
@@ -15,31 +20,61 @@ class So101LeRobotAdapter:
         self.robot = None
         self.dof = 6
         self.joint_limits = None  # fill with (min,max) per joint if available
+        self.joint_names = [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll",
+            "gripper",
+        ]
+        self.gripper_open = 100.0
+        self.gripper_closed = 0.0
 
+        self._dataset = So101DatasetAdapter()
         # recording state (optional)
         self._recording = False
         self._record_session = None
 
     def connect(self) -> None:
         cfg = self._load_yaml(self.robot_config_path)
-        # TODO: 用你当前 LeRobot 的创建方式实例化 SO101Follower/robot
-        # 典型方向：
-        #   - 通过 LeRobot 的 config/hydra 工厂创建 robot
-        #   - 或直接 import SO101Follower 并传入 cfg
-        # self.robot = ...
-        # self.robot.connect()
-        pass
+        robot_cfg = cfg.get("robot", cfg)
+        if not isinstance(robot_cfg, dict):
+            raise ValueError("robot config must be a dict")
+
+        cameras_cfg = {}
+        for name, cam_cfg in (robot_cfg.get("cameras") or {}).items():
+            cam_type = cam_cfg.get("type", "opencv")
+            if cam_type != "opencv":
+                raise ValueError(f"unsupported camera type: {cam_type}")
+            index_or_path = cam_cfg.get("index_or_path", 0)
+            if isinstance(index_or_path, str):
+                index_or_path = int(index_or_path) if index_or_path.isdigit() else Path(index_or_path)
+            cameras_cfg[name] = OpenCVCameraConfig(
+                index_or_path=index_or_path,
+                fps=cam_cfg.get("fps"),
+                width=cam_cfg.get("width"),
+                height=cam_cfg.get("height"),
+            )
+
+        robot_config = SO101FollowerConfig(
+            port=robot_cfg["port"],
+            id=robot_cfg.get("id"),
+            use_degrees=bool(robot_cfg.get("use_degrees", False)),
+            max_relative_target=robot_cfg.get("max_relative_target"),
+            cameras=cameras_cfg,
+        )
+        self.robot = SO101Follower(robot_config)
+        self.robot.connect()
 
     def disconnect(self) -> None:
         if self.robot is not None:
-            # self.robot.disconnect()
+            self.robot.disconnect()
             self.robot = None
 
     def get_joint_position(self) -> List[float]:
         obs = self._raw_get_obs()
-        # TODO: 从 LeRobot observation 中取 joint position
-        # return obs["observation"]["state"] or similar
-        raise NotImplementedError
+        return self._extract_q(obs)
 
     def get_observation(self,
                         image_format: Literal["jpeg_base64", "raw"],
@@ -85,30 +120,44 @@ class So101LeRobotAdapter:
             alpha = i / steps
             qi = (1 - alpha) * q0 + alpha * q1
             self._raw_send_joint_position(qi.tolist())
+            if self._recording:
+                obs = self._raw_get_obs()
+                self._dataset.add_step(obs, {"q": qi.tolist()})
             time.sleep(1.0 / rate_hz)
         return steps
 
     def open_gripper(self, timeout_s: float) -> None:
-        # TODO: 调用 LeRobot 的 gripper action
-        pass
+        q = self.get_joint_position()
+        q[-1] = self.gripper_open
+        self._raw_send_joint_position(q)
+        if self._recording:
+            obs = self._raw_get_obs()
+            self._dataset.add_step(obs, {"q": q})
+        time.sleep(max(0.0, timeout_s))
 
     def close_gripper(self, timeout_s: float) -> None:
-        # TODO
-        pass
+        q = self.get_joint_position()
+        q[-1] = self.gripper_closed
+        self._raw_send_joint_position(q)
+        if self._recording:
+            obs = self._raw_get_obs()
+            self._dataset.add_step(obs, {"q": q})
+        time.sleep(max(0.0, timeout_s))
 
     def stop(self) -> None:
-        # TODO: 如果 LeRobot 提供 stop/disable torque，调用之；否则发送保持位姿
-        pass
+        if self.robot is None:
+            return
+        q = self.get_joint_position()
+        self._raw_send_joint_position(q)
 
     def start_record(self, session: Dict[str, Any]) -> Dict[str, Any]:
-        # TODO: 可调用 LeRobot 的 record pipeline，或你自己把 obs/action 落盘为 LeRobot dataset
         self._recording = True
         self._record_session = session
-        return {"recording": True, "session_id": session.get("name", "session"), "output_dir": session.get("output_dir", "datasets/")}
+        return self._dataset.start(session)
 
     def stop_record(self) -> Dict[str, Any]:
         self._recording = False
-        return {"recording": False, "dataset_path": "datasets/..."}
+        return self._dataset.stop()
 
     def replay_episode(self, episode_path: str, speed_scale: float) -> None:
         # TODO: 调用 LeRobot 的 replay/eval 入口
@@ -118,22 +167,37 @@ class So101LeRobotAdapter:
     def _raw_get_obs(self) -> Any:
         if self.robot is None:
             raise RuntimeError("robot not connected")
-        # TODO: LeRobot robot step / get_observation
-        raise NotImplementedError
+        return self.robot.get_observation()
 
     def _raw_send_joint_position(self, q: List[float]) -> None:
         if self.robot is None:
             raise RuntimeError("robot not connected")
-        # TODO: LeRobot send_action with joint target
-        raise NotImplementedError
+        if len(q) != self.dof:
+            raise ValueError(f"q length must be {self.dof}")
+        action = {f"{name}.pos": float(val) for name, val in zip(self.joint_names, q)}
+        self.robot.send_action(action)
 
     def _extract_q(self, obs: Any) -> List[float]:
-        # TODO: map LeRobot obs to q
-        raise NotImplementedError
+        q = []
+        for name in self.joint_names:
+            key = f"{name}.pos"
+            if key not in obs:
+                raise KeyError(f"missing joint in observation: {key}")
+            val = obs[key]
+            q.append(float(val))
+        return q
 
     def _extract_image(self, obs: Any) -> np.ndarray:
-        # TODO: map LeRobot obs to RGB image for camera_name
-        raise NotImplementedError
+        if self.camera_name not in obs:
+            raise KeyError(f"missing camera in observation: {self.camera_name}")
+        img = obs[self.camera_name]
+        if hasattr(img, "numpy"):
+            img = img.numpy()
+        img = np.asarray(img)
+        if img.dtype != np.uint8:
+            img = np.clip(img, 0.0, 1.0)
+            img = (img * 255.0).astype(np.uint8)
+        return img
 
     @staticmethod
     def _encode_jpeg(img: np.ndarray) -> bytes:
