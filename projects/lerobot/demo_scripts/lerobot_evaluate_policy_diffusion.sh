@@ -12,6 +12,6 @@ lerobot-record \
   --dataset.root=./hugging_face \
   --dataset.num_episodes=30 \
   --dataset.reset_time_s=5 \
-  --dataset.repo_id=${HF_USER}/eval_pick_place_smolvla_rgbd \
-  --policy.path=lerobot/smolvla_base \
+  --dataset.repo_id=${HF_USER}/eval_pick_place_diffusion_with_rgbd \
+  --policy.path=${HF_USER}/lerobot_pick_and_place_diffusion \
   --dataset.single_task="put bottle from A to B"
