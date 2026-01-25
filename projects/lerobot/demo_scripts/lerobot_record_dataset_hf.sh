@@ -14,5 +14,5 @@ lerobot-record \
   --dataset.repo_id=${HF_USER}/pick_place_with_rgbd \
   --dataset.episode_time_s=15 \
   --dataset.reset_time_s=5 \
-  --dataset.num_episodes=30 \
-  --dataset.single_task="pick bottle from A and place to B"
+  --dataset.num_episodes=200 \
+  --dataset.single_task="pick box from A and place to B"

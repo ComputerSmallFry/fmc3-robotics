@@ -8,6 +8,6 @@ lerobot-train \
   --batch_size=16 \
   --steps=20000 \
   --output_dir=outputs/train/my_smolvla \
-  --job_name=my_smolvla_training \
+  --job_name=pick_and_place_SmolVLA \
   --policy.device=cuda \
   --wandb.enable=true
