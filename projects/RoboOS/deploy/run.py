@@ -12,7 +12,7 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 from ruamel.yaml import YAML
 # Add projects directory to sys.path to allow importing Robot SDK
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../fourier')))
 # from fourier_aurora_client import AuroraClient # 已移除，改为子进程调用
 from utils import (
     handle_local_tools,
@@ -432,7 +432,7 @@ def save_tool_config():
             if section not in config:
                 return jsonify({"error": f"Missing section: {section}"}), 400
 
-        with open("/workspace/RoboOS/slaver/robot_tools/robot_profile.yaml", "w") as f:
+        with open(os.path.abspath(os.path.join(os.path.dirname(__file__), "../slaver/robot_tools/robot_profile.yaml")), "w") as f:
             json.dump(config, f, indent=4)
 
         return jsonify({"status": "success"})

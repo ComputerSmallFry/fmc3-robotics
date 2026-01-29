@@ -9608,3 +9608,240 @@ Result: Mission accomplished
 Result: Mission accomplished
 2026-01-29 15:58:22,595 - INFO - ====================================================================
 2026-01-29 15:58:22,986 - INFO - Task_id (d38edae4-e23d-4b1b-a426-8b161130667a) [点头] has been sent to all agents.
+2026-01-29 16:54:52,405 - INFO - Configuration loaded from config.yaml ...
+2026-01-29 16:54:52,406 - INFO - Master Configuration:
+{'audio': {'sample_rate': 16000, 'channels': 1, 'duration': 5, 'exceed_time': 20, 'threshold': 2000, 'silence_duration': 5, 'audio_record_enable': False, 'audio_file_path': './tmp_audio.wav'}, 'tts': {'tts_speak_enable': False, 'tts_random_seed': 1924, 'tts_output_file': './tts_audio.wav'}, 'model': {'model_select': '/home/phl/workspace/models/RoboBrain2.0-7B', 'model_retry_planning': 5, 'model_dict': {'cloud_model': '/home/phl/workspace/models/RoboBrain2.0-7B', 'cloud_type': 'default', 'cloud_api_key': 'EMPTY', 'cloud_server': 'http://127.0.0.1:4567/v1/', 'max_chat_message': 50}}, 'collaborator': {'host': '127.0.0.1', 'port': 6379, 'db': 0, 'clear': True, 'password': ''}, 'logger': {'master_logger_name': 'GlobalAgent', 'master_logger_level': 'DEBUG', 'master_logger_file': '.logs/master_agent.log', 'robot_memory_yaml': '.log/robot_memory.yaml'}, 'profiling': True, 'profile': {'path': './scene/profile.yaml'}}
+2026-01-29 16:54:52,408 - INFO - Started listening for robot registrations...
+2026-01-29 16:55:01,369 - INFO - AGENT_REGISTRATION: fourier_gr2 
+ "{\"robot_name\": \"fourier_gr2\", \"robot_tool\": [{\"function\": {\"name\": \"connect_robot\", \"description\": \"Connect to Fourier GR2 robot and prepare for control.\\n    Must be called before any other robot commands.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"connect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"disconnect_robot\", \"description\": \"Disconnect from Fourier GR2 robot and return to stand mode.\"}, \"input_schema\": {\"properties\": {}, \"title\": \"disconnect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"wave_hand\", \"description\": \"Make the robot wave its right hand.\\n\\n    Args:\\n        wave_count: Number of wave cycles (default: 5)\\n        wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)\\n    \"}, \"input_schema\": {\"properties\": {\"wave_count\": {\"default\": 5, \"title\": \"Wave Count\", \"type\": \"integer\"}, \"wave_speed\": {\"default\": 0.3, \"title\": \"Wave Speed\", \"type\": \"number\"}}, \"title\": \"wave_handArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"thumbs_up\", \"description\": \"Make the robot give a thumbs up gesture with its right hand.\\n\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"thumbs_upArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"handshake\", \"description\": \"Perform a handshake interaction with a human.\\n\\n    Sequence:\\n    1. Reach out hand (open palm).\\n    2. Wait for human to grasp (simulated delay).\\n    3. Gently grasp.\\n    4. Shake arm up and down.\\n    5. Release and return to idle.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"handshakeArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"nod_head\", \"description\": \"Nod head to show agreement or greeting (Head Pitch motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"nod_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"shake_head\", \"description\": \"Shake head to show disagreement or denial (Head Yaw motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"shake_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"bow\", \"description\": \"Perform a COMPLETE polite bow gesture.\\n\\n    This tool handles the entire bowing animation automatically.\\n    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.\\n    Simply call this tool once to perform the bow.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"bowArguments\", \"type\": \"object\"}}], \"robot_state\": \"idle\", \"timestamp\": 1769676901}"
+2026-01-29 16:55:01,369 - INFO - RoboOS has listened to [fourier_gr2] by channel [fourier_gr2_to_RoboOS]
+2026-01-29 16:55:21,222 - INFO - Publishing global task: 秀肌肉
+2026-01-29 16:55:27,363 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot wave its right hand to showcase its muscles. Given the available tools, the 'wave_hand' function can be used to achieve this. However, since the robot is in an idle state, we first need to connect it to the Fourier GR2 robot using the 'connect_robot' function. After connecting, the 'wave_hand' function can be called to perform the wave action. The 'wave_hand' function has default parameters for wave count and speed, so no additional parameters are needed. The 'disconnect_robot' function will be called at the end to disconnect the robot from the Fourier GR2 robot and return to the idle state.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'connect_robot', 'subtask_order': 1}, {'robot_name': 'fourier_gr2', 'subtask': 'wave_hand(wave_count=5, wave_speed=0.3)', 'subtask_order': 2}, {'robot_name': 'fourier_gr2', 'subtask': 'disconnect_robot', 'subtask_order': 3}]}
+2026-01-29 16:55:27,364 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'connect_robot', 'subtask_order': 1}]
+2026-01-29 16:55:33,029 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 16:55:33,029 - INFO - Subtask: connect_robot
+Result: Mission accomplished
+2026-01-29 16:55:33,029 - INFO - ====================================================================
+2026-01-29 16:55:33,381 - INFO - Sending task group 2:
+[{'robot_name': 'fourier_gr2', 'subtask': 'wave_hand(wave_count=5, wave_speed=0.3)', 'subtask_order': 2}]
+2026-01-29 16:55:38,741 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 16:55:38,741 - INFO - Subtask: wave_hand(wave_count=5, wave_speed=0.3)
+Result: Mission accomplished
+2026-01-29 16:55:38,741 - INFO - ====================================================================
+2026-01-29 16:55:38,895 - INFO - Sending task group 3:
+[{'robot_name': 'fourier_gr2', 'subtask': 'disconnect_robot', 'subtask_order': 3}]
+2026-01-29 16:55:39,016 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 16:55:39,016 - INFO - Subtask: disconnect_robot
+Result: Mission accomplished
+2026-01-29 16:55:39,016 - INFO - ====================================================================
+2026-01-29 16:55:39,397 - INFO - Task_id (a12f4b43-48f2-42af-9e77-74867d1469c3) [秀肌肉] has been sent to all agents.
+2026-01-29 16:55:45,896 - INFO - Publishing global task: 摇头
+2026-01-29 16:55:50,128 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot shake its head to show disagreement or denial. Given the available tools, the 'shake_head' function is suitable for this purpose. Since the robot is currently idle, the first subtask will involve connecting the robot to the Fourier GR2 system using the 'connect_robot' function. Once connected, the next subtask will be to perform the 'shake_head' gesture. This sequence ensures that the robot is properly connected before attempting any actions, which is necessary for all subsequent tasks involving communication and control.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'connect_robot', 'subtask_order': 1}, {'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 2}]}
+2026-01-29 16:55:50,128 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'connect_robot', 'subtask_order': 1}]
+2026-01-29 16:55:57,359 - INFO - Publishing global task: 摇头
+2026-01-29 16:56:00,381 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot shake its head to show disagreement or denial. Given the available tools, the 'shake_head' function is suitable for this purpose. Since there are no other dependencies or sequential requirements mentioned, the task can be executed directly by the 'fourier_gr2' robot. The 'shake_head' function requires no input parameters and simply calls the head yaw motion to achieve the desired effect.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]}
+2026-01-29 16:56:00,381 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]
+2026-01-29 16:56:11,493 - INFO - Publishing global task: 点头
+2026-01-29 16:56:14,815 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot nod its head to show agreement or greeting. Given the available tools, the 'nod_head' function is suitable for this purpose. Since there are no other dependencies or sequential tasks mentioned in the scene description, the 'nod_head' function can be executed directly without needing additional subtasks. The 'nod_head' function requires no input parameters and simply calls the 'nod_headArguments' object, which contains the necessary attributes for the function to execute.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]}
+2026-01-29 16:56:14,816 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]
+2026-01-29 17:01:24,848 - INFO - AGENT_REGISTRATION: fourier_gr2 
+ "{\"robot_name\": \"fourier_gr2\", \"robot_tool\": [{\"function\": {\"name\": \"connect_robot\", \"description\": \"Connect to Fourier GR2 robot and prepare for control.\\n    Must be called before any other robot commands.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"connect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"disconnect_robot\", \"description\": \"Disconnect from Fourier GR2 robot and return to stand mode.\"}, \"input_schema\": {\"properties\": {}, \"title\": \"disconnect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"wave_hand\", \"description\": \"Make the robot wave its right hand.\\n\\n    Args:\\n        wave_count: Number of wave cycles (default: 5)\\n        wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)\\n    \"}, \"input_schema\": {\"properties\": {\"wave_count\": {\"default\": 5, \"title\": \"Wave Count\", \"type\": \"integer\"}, \"wave_speed\": {\"default\": 0.3, \"title\": \"Wave Speed\", \"type\": \"number\"}}, \"title\": \"wave_handArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"thumbs_up\", \"description\": \"Make the robot give a thumbs up gesture with its right hand.\\n\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"thumbs_upArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"handshake\", \"description\": \"Perform a handshake interaction with a human.\\n\\n    Sequence:\\n    1. Reach out hand (open palm).\\n    2. Wait for human to grasp (simulated delay).\\n    3. Gently grasp.\\n    4. Shake arm up and down.\\n    5. Release and return to idle.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"handshakeArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"nod_head\", \"description\": \"Nod head to show agreement or greeting (Head Pitch motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"nod_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"shake_head\", \"description\": \"Shake head to show disagreement or denial (Head Yaw motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"shake_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"bow\", \"description\": \"Perform a COMPLETE polite bow gesture.\\n\\n    This tool handles the entire bowing animation automatically.\\n    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.\\n    Simply call this tool once to perform the bow.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"bowArguments\", \"type\": \"object\"}}], \"robot_state\": \"idle\", \"timestamp\": 1769677284}"
+2026-01-29 17:01:24,849 - INFO - RoboOS has listened to [fourier_gr2] by channel [fourier_gr2_to_RoboOS]
+2026-01-29 17:01:33,384 - INFO - Publishing global task: 点头
+2026-01-29 17:01:36,583 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot nod its head to show agreement or greeting. Given the available tools, the 'nod_head' function is suitable for this purpose. Since there are no other dependencies or sequential requirements mentioned, the task can be executed directly. The 'nod_head' function requires no input parameters and simply calls the head pitch motion to nod the head. This is an atomic action, meaning it can be performed without needing further decomposition.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]}
+2026-01-29 17:01:36,584 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]
+2026-01-29 17:01:40,274 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:01:40,274 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:01:40,274 - INFO - ====================================================================
+2026-01-29 17:01:40,274 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:01:40,274 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:01:40,274 - INFO - ====================================================================
+2026-01-29 17:01:40,368 - INFO - Sending task group 2:
+[{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 2}]
+2026-01-29 17:01:42,513 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:01:42,513 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:01:42,513 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:01:42,513 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:01:42,513 - INFO - ====================================================================
+2026-01-29 17:01:42,513 - INFO - ====================================================================
+2026-01-29 17:01:42,595 - INFO - Task_id (d322af9d-0494-4fed-a520-7e6703f876a3) [点头] has been sent to all agents.
+2026-01-29 17:01:42,596 - INFO - Task_id (5e7703ae-171b-4d06-b7f0-05ddbf5a7be8) [摇头] has been sent to all agents.
+2026-01-29 17:01:42,874 - INFO - Task_id (18a981cf-a4db-49e8-bbf4-5febb22073f5) [摇头] has been sent to all agents.
+2026-01-29 17:01:42,995 - INFO - Task_id (888529f2-90c7-46c4-b4ce-ca36e2bf0bbb) [点头] has been sent to all agents.
+2026-01-29 17:12:33,250 - INFO - Configuration loaded from config.yaml ...
+2026-01-29 17:12:33,250 - INFO - Master Configuration:
+{'audio': {'sample_rate': 16000, 'channels': 1, 'duration': 5, 'exceed_time': 20, 'threshold': 2000, 'silence_duration': 5, 'audio_record_enable': False, 'audio_file_path': './tmp_audio.wav'}, 'tts': {'tts_speak_enable': False, 'tts_random_seed': 1924, 'tts_output_file': './tts_audio.wav'}, 'model': {'model_select': '~/workspace/models/RoboBrain2.0-7B', 'model_retry_planning': 5, 'model_dict': {'cloud_model': '~/workspace/models/RoboBrain2.0-7B', 'cloud_type': 'default', 'cloud_api_key': 'EMPTY', 'cloud_server': 'http://127.0.0.1:4567/v1/', 'max_chat_message': 50}}, 'collaborator': {'host': '127.0.0.1', 'port': 6379, 'db': 0, 'clear': True, 'password': ''}, 'logger': {'master_logger_name': 'GlobalAgent', 'master_logger_level': 'DEBUG', 'master_logger_file': '.logs/master_agent.log', 'robot_memory_yaml': '.log/robot_memory.yaml'}, 'profiling': True, 'profile': {'path': './scene/profile.yaml'}}
+2026-01-29 17:12:33,251 - INFO - Started listening for robot registrations...
+2026-01-29 17:12:41,621 - INFO - AGENT_REGISTRATION: fourier_gr2 
+ "{\"robot_name\": \"fourier_gr2\", \"robot_tool\": [{\"function\": {\"name\": \"connect_robot\", \"description\": \"Connect to Fourier GR2 robot and prepare for control.\\n    Must be called before any other robot commands.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"connect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"disconnect_robot\", \"description\": \"Disconnect from Fourier GR2 robot and return to stand mode.\"}, \"input_schema\": {\"properties\": {}, \"title\": \"disconnect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"wave_hand\", \"description\": \"Make the robot wave its right hand.\\n\\n    Args:\\n        wave_count: Number of wave cycles (default: 5)\\n        wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)\\n    \"}, \"input_schema\": {\"properties\": {\"wave_count\": {\"default\": 5, \"title\": \"Wave Count\", \"type\": \"integer\"}, \"wave_speed\": {\"default\": 0.3, \"title\": \"Wave Speed\", \"type\": \"number\"}}, \"title\": \"wave_handArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"thumbs_up\", \"description\": \"Make the robot give a thumbs up gesture with its right hand.\\n\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"thumbs_upArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"handshake\", \"description\": \"Perform a handshake interaction with a human.\\n\\n    Sequence:\\n    1. Reach out hand (open palm).\\n    2. Wait for human to grasp (simulated delay).\\n    3. Gently grasp.\\n    4. Shake arm up and down.\\n    5. Release and return to idle.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"handshakeArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"nod_head\", \"description\": \"Nod head to show agreement or greeting (Head Pitch motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"nod_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"shake_head\", \"description\": \"Shake head to show disagreement or denial (Head Yaw motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"shake_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"bow\", \"description\": \"Perform a COMPLETE polite bow gesture.\\n\\n    This tool handles the entire bowing animation automatically.\\n    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.\\n    Simply call this tool once to perform the bow.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"bowArguments\", \"type\": \"object\"}}], \"robot_state\": \"idle\", \"timestamp\": 1769677961}"
+2026-01-29 17:12:41,621 - INFO - RoboOS has listened to [fourier_gr2] by channel [fourier_gr2_to_RoboOS]
+2026-01-29 17:13:57,050 - INFO - Publishing global task: 点头
+2026-01-29 17:14:00,234 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot nod its head to show agreement or greeting. Given the available tools, the 'nod_head' function is suitable for this purpose. Since there are no other dependencies or sequential requirements mentioned in the scene description, the subtasks can be executed in parallel. Each subtask is designed to be independent and manageable by a single robot using its available tools.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]}
+2026-01-29 17:14:00,235 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]
+2026-01-29 17:14:04,901 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:14:04,901 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:14:04,901 - INFO - ====================================================================
+2026-01-29 17:14:05,244 - INFO - Task_id (8e40aeec-09fe-49d0-b724-7cd03c927adc) [点头] has been sent to all agents.
+2026-01-29 17:14:08,843 - INFO - Publishing global task: 摇头
+2026-01-29 17:14:12,406 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot shake its head to show disagreement or denial. Given the available tools, the 'shake_head' function is suitable for this purpose. Since there are no other dependencies or sequential requirements mentioned, the task can be executed directly by the 'fourier_gr2' robot. The 'nod_head' function is used for nodding, but since shaking the head is the specific requirement here, it is not necessary. The 'shake_head' function requires no inputs and can be called directly.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]}
+2026-01-29 17:14:12,407 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]
+2026-01-29 17:14:14,544 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:14:14,544 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:14:14,544 - INFO - ====================================================================
+2026-01-29 17:14:14,914 - INFO - Task_id (a8d0818c-5a1c-4498-a5db-05db0606ff44) [摇头] has been sent to all agents.
+2026-01-29 17:14:22,660 - INFO - Publishing global task: 摇头
+2026-01-29 17:14:26,003 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot shake its head to show disagreement or denial. Given the available tools, the 'shake_head' function is suitable for this purpose. Since there are no other dependencies or sequential requirements mentioned in the task description, the subtasks are straightforward and independent. Each subtask involves calling the 'shake_head' function without any additional parameters or dependencies. The 'subtask_order' is set to 1 for all subtasks as they are executed in parallel.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]}
+2026-01-29 17:14:26,004 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]
+2026-01-29 17:14:28,116 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:14:28,116 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:14:28,116 - INFO - ====================================================================
+2026-01-29 17:14:28,511 - INFO - Task_id (e462fcef-49ed-403e-b713-5ae91462a21b) [摇头] has been sent to all agents.
+2026-01-29 17:23:03,181 - INFO - Configuration loaded from config.yaml ...
+2026-01-29 17:23:03,181 - INFO - Master Configuration:
+{'audio': {'sample_rate': 16000, 'channels': 1, 'duration': 5, 'exceed_time': 20, 'threshold': 2000, 'silence_duration': 5, 'audio_record_enable': False, 'audio_file_path': './tmp_audio.wav'}, 'tts': {'tts_speak_enable': False, 'tts_random_seed': 1924, 'tts_output_file': './tts_audio.wav'}, 'model': {'model_select': '~/workspace/models/RoboBrain2.0-7B', 'model_retry_planning': 5, 'model_dict': {'cloud_model': '~/workspace/models/RoboBrain2.0-7B', 'cloud_type': 'default', 'cloud_api_key': 'EMPTY', 'cloud_server': 'http://127.0.0.1:4567/v1/', 'max_chat_message': 50}}, 'collaborator': {'host': '127.0.0.1', 'port': 6379, 'db': 0, 'clear': True, 'password': ''}, 'logger': {'master_logger_name': 'GlobalAgent', 'master_logger_level': 'DEBUG', 'master_logger_file': '.logs/master_agent.log', 'robot_memory_yaml': '.log/robot_memory.yaml'}, 'profiling': True, 'profile': {'path': './scene/profile.yaml'}}
+2026-01-29 17:23:03,183 - INFO - Started listening for robot registrations...
+2026-01-29 17:23:04,199 - INFO - AGENT_REGISTRATION: fourier_gr2 
+ "{\"robot_name\": \"fourier_gr2\", \"robot_tool\": [{\"function\": {\"name\": \"connect_robot\", \"description\": \"Connect to Fourier GR2 robot and prepare for control.\\n    Must be called before any other robot commands.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"connect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"disconnect_robot\", \"description\": \"Disconnect from Fourier GR2 robot and return to stand mode.\"}, \"input_schema\": {\"properties\": {}, \"title\": \"disconnect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"wave_hand\", \"description\": \"Make the robot wave its right hand.\\n\\n    Args:\\n        wave_count: Number of wave cycles (default: 5)\\n        wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)\\n    \"}, \"input_schema\": {\"properties\": {\"wave_count\": {\"default\": 5, \"title\": \"Wave Count\", \"type\": \"integer\"}, \"wave_speed\": {\"default\": 0.3, \"title\": \"Wave Speed\", \"type\": \"number\"}}, \"title\": \"wave_handArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"thumbs_up\", \"description\": \"Make the robot give a thumbs up gesture with its right hand.\\n\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"thumbs_upArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"handshake\", \"description\": \"Perform a handshake interaction with a human.\\n\\n    Sequence:\\n    1. Reach out hand (open palm).\\n    2. Wait for human to grasp (simulated delay).\\n    3. Gently grasp.\\n    4. Shake arm up and down.\\n    5. Release and return to idle.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"handshakeArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"nod_head\", \"description\": \"Nod head to show agreement or greeting (Head Pitch motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"nod_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"shake_head\", \"description\": \"Shake head to show disagreement or denial (Head Yaw motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"shake_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"bow\", \"description\": \"Perform a COMPLETE polite bow gesture.\\n\\n    This tool handles the entire bowing animation automatically.\\n    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.\\n    Simply call this tool once to perform the bow.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"bowArguments\", \"type\": \"object\"}}], \"robot_state\": \"idle\", \"timestamp\": 1769678584}"
+2026-01-29 17:23:04,199 - INFO - RoboOS has listened to [fourier_gr2] by channel [fourier_gr2_to_RoboOS]
+2026-01-29 17:29:05,282 - INFO - Configuration loaded from config.yaml ...
+2026-01-29 17:29:05,283 - INFO - Master Configuration:
+{'audio': {'sample_rate': 16000, 'channels': 1, 'duration': 5, 'exceed_time': 20, 'threshold': 2000, 'silence_duration': 5, 'audio_record_enable': False, 'audio_file_path': './tmp_audio.wav'}, 'tts': {'tts_speak_enable': False, 'tts_random_seed': 1924, 'tts_output_file': './tts_audio.wav'}, 'model': {'model_select': '~/workspace/models/RoboBrain2.0-7B', 'model_retry_planning': 5, 'model_dict': {'cloud_model': '~/workspace/models/RoboBrain2.0-7B', 'cloud_type': 'default', 'cloud_api_key': 'EMPTY', 'cloud_server': 'http://127.0.0.1:4567/v1/', 'max_chat_message': 50}}, 'collaborator': {'host': '127.0.0.1', 'port': 6379, 'db': 0, 'clear': True, 'password': ''}, 'logger': {'master_logger_name': 'GlobalAgent', 'master_logger_level': 'DEBUG', 'master_logger_file': '.logs/master_agent.log', 'robot_memory_yaml': '.log/robot_memory.yaml'}, 'profiling': True, 'profile': {'path': './scene/profile.yaml'}}
+2026-01-29 17:29:05,284 - INFO - Started listening for robot registrations...
+2026-01-29 17:29:06,178 - INFO - AGENT_REGISTRATION: fourier_gr2 
+ "{\"robot_name\": \"fourier_gr2\", \"robot_tool\": [{\"function\": {\"name\": \"connect_robot\", \"description\": \"Connect to Fourier GR2 robot and prepare for control.\\n    Must be called before any other robot commands.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"connect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"disconnect_robot\", \"description\": \"Disconnect from Fourier GR2 robot and return to stand mode.\"}, \"input_schema\": {\"properties\": {}, \"title\": \"disconnect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"wave_hand\", \"description\": \"Make the robot wave its right hand.\\n\\n    Args:\\n        wave_count: Number of wave cycles (default: 5)\\n        wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)\\n    \"}, \"input_schema\": {\"properties\": {\"wave_count\": {\"default\": 5, \"title\": \"Wave Count\", \"type\": \"integer\"}, \"wave_speed\": {\"default\": 0.3, \"title\": \"Wave Speed\", \"type\": \"number\"}}, \"title\": \"wave_handArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"thumbs_up\", \"description\": \"Make the robot give a thumbs up gesture with its right hand.\\n\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"thumbs_upArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"handshake\", \"description\": \"Perform a handshake interaction with a human.\\n\\n    Sequence:\\n    1. Reach out hand (open palm).\\n    2. Wait for human to grasp (simulated delay).\\n    3. Gently grasp.\\n    4. Shake arm up and down.\\n    5. Release and return to idle.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"handshakeArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"nod_head\", \"description\": \"Nod head to show agreement or greeting (Head Pitch motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"nod_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"shake_head\", \"description\": \"Shake head to show disagreement or denial (Head Yaw motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"shake_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"bow\", \"description\": \"Perform a COMPLETE polite bow gesture.\\n\\n    This tool handles the entire bowing animation automatically.\\n    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.\\n    Simply call this tool once to perform the bow.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"bowArguments\", \"type\": \"object\"}}], \"robot_state\": \"idle\", \"timestamp\": 1769678946}"
+2026-01-29 17:29:06,178 - INFO - RoboOS has listened to [fourier_gr2] by channel [fourier_gr2_to_RoboOS]
+2026-01-29 17:29:30,044 - INFO - AGENT_REGISTRATION: fourier_gr2 
+ "{\"robot_name\": \"fourier_gr2\", \"robot_tool\": [{\"function\": {\"name\": \"connect_robot\", \"description\": \"Connect to Fourier GR2 robot and prepare for control.\\n    Must be called before any other robot commands.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"connect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"disconnect_robot\", \"description\": \"Disconnect from Fourier GR2 robot and return to stand mode.\"}, \"input_schema\": {\"properties\": {}, \"title\": \"disconnect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"wave_hand\", \"description\": \"Make the robot wave its right hand.\\n\\n    Args:\\n        wave_count: Number of wave cycles (default: 5)\\n        wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)\\n    \"}, \"input_schema\": {\"properties\": {\"wave_count\": {\"default\": 5, \"title\": \"Wave Count\", \"type\": \"integer\"}, \"wave_speed\": {\"default\": 0.3, \"title\": \"Wave Speed\", \"type\": \"number\"}}, \"title\": \"wave_handArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"thumbs_up\", \"description\": \"Make the robot give a thumbs up gesture with its right hand.\\n\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"thumbs_upArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"handshake\", \"description\": \"Perform a handshake interaction with a human.\\n\\n    Sequence:\\n    1. Reach out hand (open palm).\\n    2. Wait for human to grasp (simulated delay).\\n    3. Gently grasp.\\n    4. Shake arm up and down.\\n    5. Release and return to idle.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"handshakeArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"nod_head\", \"description\": \"Nod head to show agreement or greeting (Head Pitch motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"nod_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"shake_head\", \"description\": \"Shake head to show disagreement or denial (Head Yaw motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"shake_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"bow\", \"description\": \"Perform a COMPLETE polite bow gesture.\\n\\n    This tool handles the entire bowing animation automatically.\\n    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.\\n    Simply call this tool once to perform the bow.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"bowArguments\", \"type\": \"object\"}}], \"robot_state\": \"idle\", \"timestamp\": 1769678970}"
+2026-01-29 17:29:30,045 - INFO - RoboOS has listened to [fourier_gr2] by channel [fourier_gr2_to_RoboOS]
+2026-01-29 17:29:34,856 - INFO - Publishing global task: 摇头
+2026-01-29 17:29:38,479 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot shake its head to indicate disagreement or denial. Given the available tools, the 'shake_head' function is suitable for this purpose. Since the robot is already in an idle state, no initial setup is needed. The 'shake_head' function requires no input parameters and is atomic, meaning it can be executed without interruption. Therefore, the subtask is straightforward and can be performed by the 'fourier_gr2' robot alone.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]}
+2026-01-29 17:29:38,479 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]
+2026-01-29 17:29:42,213 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:29:42,213 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:29:42,213 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:29:42,214 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:29:42,214 - INFO - ====================================================================
+2026-01-29 17:29:42,214 - INFO - ====================================================================
+2026-01-29 17:29:42,214 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:29:42,214 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:29:42,214 - INFO - ====================================================================
+2026-01-29 17:29:42,491 - INFO - Task_id (034b8846-0010-4f67-a4b7-66daa042cc3b) [摇头] has been sent to all agents.
+2026-01-29 17:29:43,193 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:29:43,193 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:29:43,193 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:29:43,193 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:29:43,193 - INFO - ====================================================================
+2026-01-29 17:29:43,193 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:29:43,193 - INFO - ====================================================================
+2026-01-29 17:29:43,193 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:29:43,194 - INFO - ====================================================================
+2026-01-29 17:30:31,667 - INFO - AGENT_REGISTRATION: fourier_gr2 
+ "{\"robot_name\": \"fourier_gr2\", \"robot_tool\": [{\"function\": {\"name\": \"connect_robot\", \"description\": \"Connect to Fourier GR2 robot and prepare for control.\\n    Must be called before any other robot commands.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"connect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"disconnect_robot\", \"description\": \"Disconnect from Fourier GR2 robot and return to stand mode.\"}, \"input_schema\": {\"properties\": {}, \"title\": \"disconnect_robotArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"wave_hand\", \"description\": \"Make the robot wave its right hand.\\n\\n    Args:\\n        wave_count: Number of wave cycles (default: 5)\\n        wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)\\n    \"}, \"input_schema\": {\"properties\": {\"wave_count\": {\"default\": 5, \"title\": \"Wave Count\", \"type\": \"integer\"}, \"wave_speed\": {\"default\": 0.3, \"title\": \"Wave Speed\", \"type\": \"number\"}}, \"title\": \"wave_handArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"thumbs_up\", \"description\": \"Make the robot give a thumbs up gesture with its right hand.\\n\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"thumbs_upArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"handshake\", \"description\": \"Perform a handshake interaction with a human.\\n\\n    Sequence:\\n    1. Reach out hand (open palm).\\n    2. Wait for human to grasp (simulated delay).\\n    3. Gently grasp.\\n    4. Shake arm up and down.\\n    5. Release and return to idle.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"handshakeArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"nod_head\", \"description\": \"Nod head to show agreement or greeting (Head Pitch motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"nod_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"shake_head\", \"description\": \"Shake head to show disagreement or denial (Head Yaw motion).\"}, \"input_schema\": {\"properties\": {}, \"title\": \"shake_headArguments\", \"type\": \"object\"}}, {\"function\": {\"name\": \"bow\", \"description\": \"Perform a COMPLETE polite bow gesture.\\n\\n    This tool handles the entire bowing animation automatically.\\n    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.\\n    Simply call this tool once to perform the bow.\\n    \"}, \"input_schema\": {\"properties\": {}, \"title\": \"bowArguments\", \"type\": \"object\"}}], \"robot_state\": \"idle\", \"timestamp\": 1769679031}"
+2026-01-29 17:30:31,667 - INFO - RoboOS has listened to [fourier_gr2] by channel [fourier_gr2_to_RoboOS]
+2026-01-29 17:30:38,507 - INFO - Publishing global task: 摇头
+2026-01-29 17:30:41,370 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot shake its head to show disagreement or denial. Given the available tools, the 'shake_head' function is suitable for this purpose. Since there are no other dependencies or sequential requirements mentioned, the subtasks can be executed in parallel. Each subtask is designed to be independent and manageable by a single robot using its available tools.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]}
+2026-01-29 17:30:41,370 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'shake_head', 'subtask_order': 1}]
+2026-01-29 17:30:43,577 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,577 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,577 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,577 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,577 - INFO - ====================================================================
+2026-01-29 17:30:43,577 - INFO - ====================================================================
+2026-01-29 17:30:43,578 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,578 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,578 - INFO - ====================================================================
+2026-01-29 17:30:43,578 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,578 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,578 - INFO - ====================================================================
+2026-01-29 17:30:43,582 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,582 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,582 - INFO - ====================================================================
+2026-01-29 17:30:43,582 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,582 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,582 - INFO - ====================================================================
+2026-01-29 17:30:43,582 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,582 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:43,582 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,582 - INFO - Subtask: shake_head
+Result: Mission accomplished
+2026-01-29 17:30:43,582 - INFO - ====================================================================
+2026-01-29 17:30:43,582 - INFO - ====================================================================
+2026-01-29 17:30:43,876 - INFO - Task_id (1999bb50-0d1c-4681-94c8-81ef43317cd8) [摇头] has been sent to all agents.
+2026-01-29 17:30:47,888 - INFO - Publishing global task: 点头
+2026-01-29 17:30:51,220 - INFO - Received reasoning and subtasks:
+{'reasoning_explanation': "The task involves making the robot nod its head to show agreement or greeting. Given the available tools, the 'nod_head' function is suitable for this purpose. Since there are no other dependencies or sequential tasks mentioned, the 'nod_head' function can be executed directly. The 'nod_head' function requires no input parameters and simply calls the 'head Pitch motion' to nod the head. This is an atomic action, meaning it can be performed without needing further decomposition.", 'subtask_list': [{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]}
+2026-01-29 17:30:51,220 - INFO - Sending task group 1:
+[{'robot_name': 'fourier_gr2', 'subtask': 'nod_head', 'subtask_order': 1}]
+2026-01-29 17:30:53,448 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,448 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,448 - INFO - ====================================================================
+2026-01-29 17:30:53,449 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,449 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,449 - INFO - ====================================================================
+2026-01-29 17:30:53,449 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,449 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,449 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,449 - INFO - ====================================================================
+2026-01-29 17:30:53,449 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,449 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,449 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,449 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,449 - INFO - ====================================================================
+2026-01-29 17:30:53,449 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,449 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,449 - INFO - ====================================================================
+2026-01-29 17:30:53,449 - INFO - ================ Received result from fourier_gr2 ================
+2026-01-29 17:30:53,450 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,450 - INFO - ====================================================================
+2026-01-29 17:30:53,450 - INFO - Subtask: nod_head
+Result: Mission accomplished
+2026-01-29 17:30:53,450 - INFO - ====================================================================
+2026-01-29 17:30:53,450 - INFO - ====================================================================
+2026-01-29 17:30:53,727 - INFO - Task_id (4b8b4f70-d441-4906-a8b5-e871151eb168) [点头] has been sent to all agents.

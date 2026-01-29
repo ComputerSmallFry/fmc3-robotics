@@ -27,6 +27,8 @@ async def _get_client():
         except Exception as e:
             print(f"[Skill] Error initializing client: {e}")
             raise
+    else:
+        print("[Skill] Using existing AuroraClient instance.")
     return _client
 
 
@@ -172,12 +174,16 @@ async def disconnect_robot() -> str:
     global _client
     if _client is not None:
         try:
+            print("[Skill] Setting robot to Stand mode (Safe State)...")
             _client.set_fsm_state(2)
-            _client.close()
+            # Do NOT close the client here, as re-initialization causes segfaults in the underlying DDS library.
+            # _client.close()
+            print("[Skill] Robot state reset. Connection kept alive for future use.")
         except Exception as e:
             print(f"[Skill] Error during disconnect: {e}")
-        _client = None
-    return "Fourier GR2 robot disconnected."
+        # Keep _client not None
+        # _client = None
+    return "Fourier GR2 robot disconnected (Stand Mode)."
 
 
 @mcp.tool()

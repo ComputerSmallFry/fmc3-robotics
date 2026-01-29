@@ -31,7 +31,7 @@ pip install pyaudio sounddevice vosk pyttsx3 speechrecognition pypinyin fourier-
 
 ```bash
 conda activate fourier_speech
-cd /home/phl/fmc3-robotics/projects/Tools
+cd ~/workspace/fmc3-robotics/projects/fourier/Tools
 python fourier_voice_local.py
 ```
 
@@ -53,7 +53,7 @@ python fourier_voice_local.py
 
 ```bash
 conda activate fourier_speech
-cd /home/phl/fmc3-robotics/projects/Tools
+cd ~/workspace/fmc3-robotics/projects/fourier/Tools
 python fourier_voice_cloud.py
 ```
 
