@@ -1,1 +1,2 @@
-python inference.py --serve --host 0.0.0.0 --port 4567 --model-id /home/haoanw/DataCenter/RoboBrain2.0-7B
+# python inference.py --serve --host 0.0.0.0 --port 4567 --model-id /home/phl/fmc3-robotics/models/RoboBrain2.0-7B --load-in-4bit
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python inference.py --serve --host 0.0.0.0 --port 4567 --model-id /home/phl/fmc3-robotics/models/RoboBrain2.0-3B --load-in-4bit

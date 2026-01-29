@@ -3,8 +3,9 @@ import json
 import os
 import re
 import cv2
+import torch
 from typing import Union
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from transformers import AutoModelForVision2Seq, AutoProcessor, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
 
 class UnifiedInference:
@@ -12,21 +13,81 @@ class UnifiedInference:
     A unified class for performing inference using RoboBrain models.
     Supports both 3B (non-thinking) and 7B/32B (thinking) models.
     """
-    
-    def __init__(self, model_id="BAAI/RoboBrain2.0-7B", device_map="auto"):
+
+    def __init__(self, model_id="BAAI/RoboBrain2.0-7B", device_map="auto", load_in_4bit=False, max_memory=None):
         """
         Initialize the model and processor.
-        
-        Args:
-            model_id (str): Path or Hugging Face model identifier
-            device_map (str): Device mapping strategy ("auto", "cuda:0", etc.)
         """
         print("Loading Checkpoint ...")
         self.model_id = model_id
-        self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_id, 
-            torch_dtype="auto", 
-            device_map=device_map
+
+        quantization_config = None
+        if load_in_4bit:
+            print("Enabling 4-bit quantization...")
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                llm_int8_enable_fp32_cpu_offload=True
+            )
+            # === 关键修改：4-bit 模式强制使用单卡，避免 Meta Tensor 错误 ===
+            print("Force setting device_map to GPU 0 for 4-bit mode...")
+            device_map = {"": 0} 
+            # 强制单卡后，max_memory 限制通常不再需要，或者会导致冲突，建议设为 None
+            max_memory = None 
+
+        max_memory_dict = None
+        if max_memory:
+            max_memory_dict = {0: max_memory, "cpu": "100GiB"}
+            print(f"Applying max GPU memory limit: {max_memory_dict}")
+
+        self.model = AutoModelForVision2Seq.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16,
+            device_map=device_map,  # 如果是 4-bit，这里会被改为 {"": 0}
+            quantization_config=quantization_config,
+            max_memory=max_memory_dict,
+            low_cpu_mem_usage=True # 建议加上这个，优化加载速度
+        )
+        self.processor = AutoProcessor.from_pretrained(model_id)
+        
+        self.supports_thinking = self._check_thinking_support(model_id)
+        print(f"Model thinking support: {self.supports_thinking}")
+        """
+        Initialize the model and processor.
+
+        Args:
+            model_id (str): Path or Hugging Face model identifier
+            device_map (str): Device mapping strategy ("auto", "cuda:0", etc.)
+            load_in_4bit (bool): Whether to use 4-bit quantization.
+            max_memory (str): Max GPU memory to use (e.g. "6GiB").
+        """
+        print("Loading Checkpoint ...")
+        self.model_id = model_id
+
+        quantization_config = None
+        if load_in_4bit:
+            print("Enabling 4-bit quantization...")
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                llm_int8_enable_fp32_cpu_offload=True
+            )
+
+        max_memory_dict = None
+        if max_memory:
+            max_memory_dict = {0: max_memory, "cpu": "100GiB"}
+            print(f"Applying max GPU memory limit: {max_memory_dict}")
+
+        self.model = AutoModelForVision2Seq.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16,
+            device_map=device_map,
+            quantization_config=quantization_config,
+            max_memory=max_memory_dict
         )
         self.processor = AutoProcessor.from_pretrained(model_id)
         
@@ -271,9 +332,11 @@ if __name__ == "__main__":
     parser.add_argument("--serve", action="store_true", help="Start OpenAI-compatible server")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=4567)
-    parser.add_argument("--model-id", default="/home/haoanw/DataCenter/RoboBrain2.0-7B")
+    parser.add_argument("--model-id", default="/home/phl/fmc3-robotics/models/RoboBrain2.0-7B")
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--enable-thinking", action="store_true")
+    parser.add_argument("--load-in-4bit", action="store_true", help="Load model in 4-bit quantization to save memory")
+    parser.add_argument("--max-gpu-memory", type=str, help="Maximum GPU memory to use (e.g., '6GiB') to avoid OOM")
     args = parser.parse_args()
 
     if args.serve:
@@ -282,7 +345,12 @@ if __name__ == "__main__":
         import uvicorn
 
         app = FastAPI()
-        model = UnifiedInference(model_id=args.model_id, device_map=args.device_map)
+        model = UnifiedInference(
+            model_id=args.model_id,
+            device_map=args.device_map,
+            load_in_4bit=args.load_in_4bit,
+            max_memory=args.max_gpu_memory
+        )
 
         class ChatMessage(BaseModel):
             role: str

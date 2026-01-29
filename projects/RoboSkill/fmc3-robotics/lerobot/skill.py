@@ -19,7 +19,7 @@ DEFAULT_CAMERA = os.getenv("SO101_CAMERA", "/dev/video0")
 DEFAULT_ROBOT_ID = os.getenv("SO101_ID", "follower_arm")
 DEFAULT_POLICY_PATH = os.getenv(
     "SO101_POLICY_PATH",
-    "/home/haoanw/workspace/RoboSkill/fmc3-robotics/lerobot/policies/pick_place",
+    "/home/phl/fmc3-robotics/projects/RoboSkill/fmc3-robotics/lerobot/policies/pick_place",
 )
 DEFAULT_CALIBRATE_ON_CONNECT = os.getenv("SO101_CALIBRATE_ON_CONNECT", "false").lower() == "true"
 DEFAULT_REQUIRE_CALIBRATED = os.getenv("SO101_REQUIRE_CALIBRATED", "false").lower() == "true"

@@ -8,7 +8,7 @@ This is a FastMCP skill server that exposes low-level control for a LeRobot SO10
 
 ## Install
 ```bash
-pip install -e /home/haoanw/workspace/lerobot
+pip install -e /home/phl/lerobot
 pip install -r requirements.txt
 ```
 
@@ -21,7 +21,7 @@ Defaults are set for your hardware, and can be overridden with env vars:
 - `SO101_DISABLE_TORQUE` (default `true`)
 - `SO101_CALIBRATE_ON_CONNECT` (default `false`, set `true` to run interactive calibration on connect)
 - `SO101_REQUIRE_CALIBRATED` (default `false`, set `true` to block if calibration mismatches)
-- `SO101_POLICY_PATH` (default `/home/haoanw/workspace/RoboSkill/fmc3-robotics/lerobot/policies/pick_place`)
+- `SO101_POLICY_PATH` (default `/home/phl/fmc3-robotics/projects/RoboSkill/fmc3-robotics/lerobot/policies/pick_place`)
 
 If you already calibrated in LeRobot, set `SO101_ID` to match the calibration file name under
 `~/.cache/huggingface/lerobot/calibration/robots/so101_follower/`.
@@ -71,4 +71,4 @@ robot:
 
 Then start:
 1) `python skill.py` (on the robot machine)
-2) `python /home/haoanw/workspace/RoboOS/slaver/run.py`
+2) `python /home/phl/fmc3-robotics/projects/RoboOS/slaver/run.py`

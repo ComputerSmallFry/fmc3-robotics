@@ -123,17 +123,26 @@ class GlobalAgent:
 
     def _extract_json(self, input_string):
         """Extract JSON from a string."""
-        start_marker = "```json"
-        end_marker = "```"
         try:
+            # Try to find markdown code block first
+            start_marker = "```json"
+            end_marker = "```"
             start_idx = input_string.find(start_marker)
-            end_idx = input_string.find(end_marker, start_idx + len(start_marker))
-            if start_idx == -1 or end_idx == -1:
-                self.logger.warning("[WARNING] JSON markers not found in the string.")
-                return None
-            json_str = input_string[start_idx + len(start_marker) : end_idx].strip()
-            json_data = json.loads(json_str)
-            return json_data
+            if start_idx != -1:
+                end_idx = input_string.find(end_marker, start_idx + len(start_marker))
+                if end_idx != -1:
+                    json_str = input_string[start_idx + len(start_marker) : end_idx].strip()
+                    return json.loads(json_str)
+
+            # Fallback: try to find JSON object directly
+            start_idx = input_string.find("{")
+            end_idx = input_string.rfind("}")
+            if start_idx != -1 and end_idx != -1:
+                json_str = input_string[start_idx : end_idx + 1]
+                return json.loads(json_str)
+
+            self.logger.warning("[WARNING] JSON markers/object not found in the string.")
+            return None
         except json.JSONDecodeError as e:
             self.logger.warning(
                 f"[WARNING] JSON cannot be extracted from the string.\n{e}"
@@ -224,6 +233,14 @@ class GlobalAgent:
             attempt += 1
 
         self.logger.info(f"Received reasoning and subtasks:\n{reasoning_and_subtasks}")
+
+        if reasoning_and_subtasks is None:
+            self.logger.error("[ERROR] Failed to obtain valid JSON plan from model.")
+            return {
+                "reasoning_explanation": "Failed to decompose task: Model output invalid or empty.",
+                "subtask_list": []
+            }
+
         subtask_list = reasoning_and_subtasks.get("subtask_list", [])
         grouped_tasks = self._group_tasks_by_order(subtask_list)
 

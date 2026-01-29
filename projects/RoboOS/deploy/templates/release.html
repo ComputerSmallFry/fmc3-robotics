@@ -724,6 +724,14 @@
                 <div id="robot-list">
                 </div>
             </div>
+
+            <div class="status-card">
+                <h3><i class="fas fa-exclamation-triangle"></i> Emergency Control</h3>
+                <button id="emergency-stop" class="api-button" style="width: 100%; margin-bottom: 10px; background-color: #ff0000; border-color: #cc0000; color: white; font-weight: bold; font-size: 1.1rem; box-shadow: 0 0 10px rgba(255,0,0,0.5); animation: pulse 2s infinite;">
+                    <i class="fas fa-hand-paper"></i> EMERGENCY STOP / 立即急停
+                </button>
+            </div>
+
             <div class="status-card system-status">
                 <h3><i class="fas fa-chart-line"></i> system state</h3>
 
@@ -1136,6 +1144,50 @@
             socket.on("text_update", (data) => {
                 document.getElementById("message").value = data.data
             })
+
+            // Emergency STOP Logic (New Feature)
+            document.getElementById('emergency-stop').addEventListener('click', async function() {
+                if (!confirm('⚠️ 紧急操作确认 / EMERGENCY CONFIRMATION ⚠️\n\nThis will IMMEDIATELY interrupt all running tasks and stop the robot.\n这将立即中断所有正在运行的任务并停止机器人。\n\nAre you sure? / 确认执行?')) {
+                    return;
+                }
+
+                const btn = this;
+                const originalText = btn.innerHTML;
+                const responseElement = document.getElementById('server-response');
+
+                try {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-radiation fa-spin"></i> STOPPING...';
+
+                    // Visual feedback immediately
+                    document.body.style.boxShadow = "inset 0 0 50px red";
+                    setTimeout(() => document.body.style.boxShadow = "", 500);
+
+                    responseElement.innerHTML = '<span style="color: #ff0000; font-weight: bold; font-size: 1.2em;">🚨 SENDING EMERGENCY STOP SIGNAL...</span>';
+
+                    const response = await fetch('/api/estop', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ robot_name: "all" })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        responseElement.innerHTML = `<span style="color: #ff0000; font-weight: bold;">🛑 [EMERGENCY STOP] EXECUTED: ${result.message}</span>`;
+                        alert('🛑 STOP SIGNAL SENT! / 急停信号已发送!');
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (error) {
+                    console.error('E-Stop failed:', error);
+                    alert(`E-Stop failed: ${error.message}`);
+                    responseElement.innerHTML = `<span style="color: var(--danger);">❌ [E-STOP FAILED]: ${error.message}</span>`;
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
+            });
         });
     </script>
 </body>

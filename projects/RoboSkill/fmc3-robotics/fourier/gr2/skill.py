@@ -95,6 +95,45 @@ async def _wave_motion(client, wave_center_pos, wave_amplitude=0.5, wave_count=5
     print("[Skill] Wave motion done.")
 
 
+async def _shake_motion(client, center_pos, amplitude=0.15, count=3, cycle_time=0.4):
+    """Handshake motion using Elbow Pitch."""
+    frequency = 100
+    steps_per_cycle = int(frequency * cycle_time)
+    elbow_pitch_index = 3  # Index for elbow pitch
+
+    print(f"[Skill] Starting handshake motion ({count} cycles)...")
+    for i in range(count):
+        for step in range(steps_per_cycle + 1):
+            # Up and down motion
+            offset = amplitude * math.sin(2 * math.pi * step / steps_per_cycle)
+            pos = center_pos.copy()
+            pos[elbow_pitch_index] = center_pos[elbow_pitch_index] + offset
+            client.set_joint_positions({"right_manipulator": pos})
+            await asyncio.sleep(1 / frequency)
+    print("[Skill] Handshake motion done.")
+
+
+async def _head_motion(client, axis_index, amplitude=0.3, count=3, cycle_time=0.8):
+    """Head motion helper (nod or shake).
+    axis_index: 0 for pitch (nod), 1 for yaw (shake)
+    """
+    frequency = 100
+    steps_per_cycle = int(frequency * cycle_time)
+
+    print(f"[Skill] Starting head motion axis={axis_index} ({count} cycles)...")
+    for i in range(count):
+        for step in range(steps_per_cycle + 1):
+            offset = amplitude * math.sin(2 * math.pi * step / steps_per_cycle)
+            pos = [0.0, 0.0]
+            pos[axis_index] = offset
+            client.set_joint_positions({"head": pos})
+            await asyncio.sleep(1 / frequency)
+
+    # Reset to zero
+    client.set_joint_positions({"head": [0.0, 0.0]})
+    print("[Skill] Head motion done.")
+
+
 async def _ensure_control_mode(client):
     """Ensure robot is in UserCmd mode."""
     # Always set to UserCmd mode before action to prevent timeout disconnects
@@ -144,10 +183,7 @@ async def disconnect_robot() -> str:
 @mcp.tool()
 async def wave_hand(wave_count: int = 5, wave_speed: float = 0.3) -> str:
     """Make the robot wave its right hand.
-        控制机器人执行[挥手]动作。
-        打招呼或引起注意的动作。
-        早上好，欢迎领导
-        Guten Morgen! Herzlich willkommen, liebe Führungskräfte.
+
     Args:
         wave_count: Number of wave cycles (default: 5)
         wave_speed: Time for one wave cycle in seconds, smaller is faster (default: 0.3)
@@ -184,7 +220,7 @@ async def wave_hand(wave_count: int = 5, wave_speed: float = 0.3) -> str:
 @mcp.tool()
 async def thumbs_up() -> str:
     """Make the robot give a thumbs up gesture with its right hand.
-    
+
     """
     print("[Skill] thumbs_up called")
     try:
@@ -217,48 +253,149 @@ async def thumbs_up() -> str:
 
 
 @mcp.tool()
-async def move_arm_to_position(positions: list) -> str:
-    """Move robot right arm to specified joint positions.
+async def handshake() -> str:
+    """Perform a handshake interaction with a human.
 
-    Args:
-        positions: List of 7 joint positions for right_manipulator
+    Sequence:
+    1. Reach out hand (open palm).
+    2. Wait for human to grasp (simulated delay).
+    3. Gently grasp.
+    4. Shake arm up and down.
+    5. Release and return to idle.
     """
-    if len(positions) != 7:
-        return "Error: positions must be a list of 7 values"
-
-    print(f"[Skill] move_arm_to_position called: {positions}")
+    print("[Skill] handshake called")
     try:
         client = await _get_client()
         await _ensure_control_mode(client)
 
-        current_pos = client.get_group_state("right_manipulator") or [0.0]*7
-        await _move_arm_steady(client, "right_manipulator", current_pos, positions, duration=2.0)
+        # Poses
+        # Reach forward (lower than wave)
+        handshake_pos = [-0.3, -0.1, 0.0, -0.6, 0.0, 0.0, 0.0]
+        hand_open = [0.0, 0.0, 0.0, 0.0, 0.8, 0.0] # Open
+        hand_grasp = [1.2, 1.2, 1.2, 1.2, 0.8, 0.0] # Loose grasp for handshake
 
-        return f"Arm moved to position: {positions}"
+        current_pos = client.get_group_state("right_manipulator") or [0.0]*7
+
+        # 1. Reach out
+        print("[Skill] Reaching out for handshake...")
+        await _move_sync_steady(client, handshake_pos, hand_open, duration=1.5)
+
+        # 2. Wait for interaction
+        print("[Skill] Waiting for human...")
+        await asyncio.sleep(1.5)
+
+        # 3. Grasp
+        print("[Skill] Grasping...")
+        client.set_joint_positions({"right_hand": hand_grasp})
+        await asyncio.sleep(0.5)
+
+        # 4. Shake
+        print("[Skill] Shaking...")
+        await _shake_motion(client, handshake_pos, count=3)
+
+        # 5. Release
+        print("[Skill] Releasing...")
+        client.set_joint_positions({"right_hand": hand_open})
+        await asyncio.sleep(0.5)
+
+        # 6. Return
+        print("[Skill] Returning to idle...")
+        await _move_arm_steady(client, "right_manipulator", handshake_pos, [0.0]*7, duration=2.0)
+
+        return "Handshake completed successfully."
     except Exception as e:
-        print(f"[Skill] Error in move_arm_to_position: {e}")
-        return f"Move failed: {str(e)}"
+        error_msg = f"Error in handshake: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return f"Handshake failed: {str(e)}"
 
 
 @mcp.tool()
-async def set_hand_gesture(positions: list) -> str:
-    """Set robot right hand finger positions.
-
-    Args:
-        positions: List of 6 finger joint positions [index, middle, ring, pinky, thumb_rotation, thumb_flex]
-    """
-    if len(positions) != 6:
-        return "Error: positions must be a list of 6 values"
-
-    print(f"[Skill] set_hand_gesture called: {positions}")
+async def nod_head() -> str:
+    """Nod head to show agreement or greeting (Head Pitch motion)."""
+    print("[Skill] nod_head called")
     try:
         client = await _get_client()
         await _ensure_control_mode(client)
-        client.set_joint_positions({"right_hand": positions})
-        return f"Hand gesture set to: {positions}"
+
+        # Axis 0 is Pitch (Nod)
+        # Amplitude 0.3 rad is approx 17 degrees
+        await _head_motion(client, axis_index=1, amplitude=0.3, count=3, cycle_time=0.6)
+
+        return "Nod head completed."
     except Exception as e:
-        print(f"[Skill] Error in set_hand_gesture: {e}")
-        return f"Set gesture failed: {str(e)}"
+        print(f"Error in nod_head: {e}")
+        return f"Nod failed: {e}"
+
+
+@mcp.tool()
+async def shake_head() -> str:
+    """Shake head to show disagreement or denial (Head Yaw motion)."""
+    print("[Skill] shake_head called")
+    try:
+        client = await _get_client()
+        await _ensure_control_mode(client)
+
+        # Axis 1 is Yaw (Shake)
+        # Amplitude 0.4 rad is approx 23 degrees
+        await _head_motion(client, axis_index=0, amplitude=0.4, count=3, cycle_time=0.6)
+
+        return "Shake head completed."
+    except Exception as e:
+        print(f"Error in shake_head: {e}")
+        return f"Shake failed: {e}"
+
+
+@mcp.tool()
+async def bow() -> str:
+    """Perform a COMPLETE polite bow gesture.
+
+    This tool handles the entire bowing animation automatically.
+    This is an ATOMIC action. DO NOT decompose this into 'nod' or 'shake' commands.
+    Simply call this tool once to perform the bow.
+    """
+    print("[Skill] bow called")
+    try:
+        client = await _get_client()
+        await _ensure_control_mode(client)
+
+        # 1. Bow down
+        # Waist: 0.3 rad (~17 deg) forward
+        # Head: 0.3 rad (~17 deg) down (looking at floor)
+        # Arms: Slightly back to sides (optional, here we just keep them neutral/current)
+
+        print("[Skill] Bowing down...")
+        # Move waist and head together
+        steps = 50 # 0.5s
+        for i in range(steps + 1):
+            ratio = i / steps
+            waist_val = 0.3 * ratio
+            head_pitch = 0.3 * ratio
+            client.set_joint_positions({
+                "waist": [waist_val],
+                "head": [head_pitch, 0.0]
+            })
+            await asyncio.sleep(0.01)
+
+        # 2. Hold
+        print("[Skill] Holding bow...")
+        await asyncio.sleep(1.5)
+
+        # 3. Rise up
+        print("[Skill] Rising up...")
+        for i in range(steps + 1):
+            ratio = 1.0 - (i / steps)
+            waist_val = 0.3 * ratio
+            head_pitch = 0.3 * ratio
+            client.set_joint_positions({
+                "waist": [waist_val],
+                "head": [head_pitch, 0.0]
+            })
+            await asyncio.sleep(0.01)
+
+        return "Bow gesture completed."
+    except Exception as e:
+        print(f"Error in bow: {e}")
+        return f"Bow failed: {e}"
 
 
 if __name__ == "__main__":
