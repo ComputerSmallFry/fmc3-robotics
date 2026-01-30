@@ -26,7 +26,7 @@ def system_status():
     Returns:
         JSON response with system status
     """
-    cpu_load = psutil.cpu_percent(interval=1)
+    cpu_load = psutil.cpu_percent(interval=None)
 
     memory = psutil.virtual_memory()
     memory_usage = memory.percent

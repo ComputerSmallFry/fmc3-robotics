@@ -42,14 +42,33 @@ class UnifiedInference:
             max_memory_dict = {0: max_memory, "cpu": "100GiB"}
             print(f"Applying max GPU memory limit: {max_memory_dict}")
 
+        # === 针对 4090 48GB 的性能优化 ===
+        # 1. 优先使用 bfloat16，这是 Ampere/Ada 架构(30/40系)的最佳精度
+        dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        print(f"Using precision: {dtype}")
+
+        # 2. 尝试启用 Flash Attention 2
+        attn_impl = "sdpa" # PyTorch 2.0 默认的高效注意力
+        try:
+            import flash_attn
+            attn_impl = "flash_attention_2"
+            print("Flash Attention 2 is available and enabled.")
+        except ImportError:
+            print("Flash Attention 2 not found, falling back to SDPA/Eager.")
+
         self.model = AutoModelForVision2Seq.from_pretrained(
             model_id,
-            torch_dtype=torch.float16,
-            device_map=device_map,  # 如果是 4-bit，这里会被改为 {"": 0}
+            torch_dtype=dtype,
+            device_map=device_map,
             quantization_config=quantization_config,
             max_memory=max_memory_dict,
-            low_cpu_mem_usage=True # 建议加上这个，优化加载速度
+            low_cpu_mem_usage=True,
+            attn_implementation=attn_impl  # 启用加速
         )
+
+        # 3. 开启推理模式优化
+        self.model.eval()
+
         self.processor = AutoProcessor.from_pretrained(model_id)
         
         self.supports_thinking = self._check_thinking_support(model_id)
@@ -332,7 +351,7 @@ if __name__ == "__main__":
     parser.add_argument("--serve", action="store_true", help="Start OpenAI-compatible server")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=4567)
-    parser.add_argument("--model-id", default="/home/phl/fmc3-robotics/models/RoboBrain2.0-7B")
+    parser.add_argument("--model-id", default="/home/phl/workspace/models/RoboBrain2.0-7B")
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--enable-thinking", action="store_true")
     parser.add_argument("--load-in-4bit", action="store_true", help="Load model in 4-bit quantization to save memory")
@@ -487,7 +506,7 @@ if __name__ == "__main__":
         uvicorn.run(app, host=args.host, port=args.port)
     else:
         print("=== Testing 7B Model ===")
-        model_7b = UnifiedInference("BAAI/RoboBrain2.0-7B")
+        model_7b = UnifiedInference("/home/phl/workspace/models/RoboBrain2.0-7B")
         prompt = "What is shown in this image?"
         image = "http://images.cocodataset.org/val2017/000000039769.jpg"
         pred_7b = model_7b.inference(prompt, image, task="general", enable_thinking=True)

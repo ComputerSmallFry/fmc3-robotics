@@ -1,41 +1,88 @@
-# Prerequisites
+# --- 原有的二进制与编译文件 ---
 *.d
-
-# Compiled Object files
 *.slo
 *.lo
 *.o
 *.obj
-
-# Precompiled Headers
 *.gch
 *.pch
-
-# Linker files
 *.ilk
-
-# Debugger Files
 *.pdb
-
-# Compiled Dynamic libraries
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
 *.mod
 *.smod
-
-# Compiled Static libraries
 *.lai
 *.la
 *.a
 *.lib
-
-# Executables
 *.exe
 *.out
 *.app
-
-# debug information files
 *.dwo
+
+# --- 补充：自动生成的目录 (Build & Workspaces) ---
+[Bb]uild/
+[Dd]ist/
+[Bb]in/
+.vscode/
+.idea/
+*.swp
+*.patch
+.DS_Store
+
+# --- 补充：Python 自动生成文件 (机器人开发常用) ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# --- 补充：日志与临时文件 ---
+*.log
+*.log.*
+logs/
+log/
+.logs/
+.log/
+wandb/
+runs/
+tmp/
+temp/
+*.tmp
+*.bak
+
+# --- 补充：大文件与镜像 (准备交给 LFS 管理的先在这里屏蔽，或视情况而定) ---
+# 如果某些大文件绝对不入库（如临时备份），写在这里：
+*.tar
+*.zip
+*.7z
+*.gz
+# 机器人模型大文件（如果不用LFS，通常建议忽略）
+# *.urdf
+# *.onnx
+
+# --- 补充：项目生成的自动文件 ---
+# RoboBrain 推理结果输出目录
+result/
+results/
+# 自动生成的标注图片
+*_annotated.jpg
+*_annotated.png
+*_annotated.jpeg
+
+# 常见 ML/数据生成文件
+*.npy
+*.npz
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.h5
+
+# Redis/数据库生成文件 (RoboOS)
+dump.rdb
+appendonly.aof
