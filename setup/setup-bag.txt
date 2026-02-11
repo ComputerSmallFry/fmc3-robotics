@@ -1,0 +1,21 @@
+# STEP 1
+sudo apt install vim -y
+sudo vim /etc/apt/sources.list
+sudo nano /etc/apt/sources.list
+# Ctrl+V, Ctrl+X
+
+# STEP 2
+cd
+wget http://srv002.farts.com:8099/setup/provisioning.sh
+chmod +x provisioning.sh
+./provisioning.sh
+
+# STEP 3
+cd
+wget http://srv002.farts.com:8099/GR3/onekey/run_gr3.sh
+wget http://srv002.farts.com:8099/mount_s3.sh
+sudo apt install s3fs -y
+sudo bash ~/mount_s3.sh --mount-path ~/s3data
+
+# STEP 4
+docker pull docker.fftaicorp.com/farts/farther:onekey-251023052740-22644102

@@ -1,0 +1,28 @@
+
+# STEP 1
+sudo apt install vim -y
+sudo vim /etc/apt/sources.list
+sudo nano /etc/apt/sources.list
+# Ctrl+V, Ctrl+X
+
+# STEP 2
+cd
+wget http://srv002.farts.com:8099/setup/provisioning.sh
+chmod +x provisioning.sh
+./provisioning.sh
+
+# STEP 3
+wget -O /tmp/aurora-robot-deployment_1.0.0_all.deb /tmp https://miniserver.fftaicorp.com/aurora-robot-deployment_1.0.0_all.deb; sudo apt install --reinstall -f /tmp/aurora-robot-deployment_1.0.0_all.deb
+
+# STEP 4
+cd
+scp -r farts@10.18.172.2:/home/farts/farts_ops/GR3/aurora_config .
+# password: fftai2015!
+
+deploy_aurora tag Algorithm-aurora_unified-305-GR3
+# skip docker user/password
+
+AuroraCore --config config/config/config.yml
+
+
+

@@ -1,0 +1,2 @@
+# 0483:5740 STMicroelectronics Virtual COM Port, add alias to /dev/qnbot
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", MODE="0666", SYMLINK+="qnbot"

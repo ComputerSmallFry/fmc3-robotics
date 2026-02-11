@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=DAQ GUI
+Comment=DAQ GUI
+Exec=/home/fourier/daq-deploy/gr3/launch_gui.sh
+Icon=utilities-terminal
+Terminal=false
+StartupNotify=true

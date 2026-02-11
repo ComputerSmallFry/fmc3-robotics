@@ -1,0 +1,52 @@
+services:
+  redis:
+    container_name: redis
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    command: redis-server --loglevel warning --requirepass "9439b1370790bd51ba0"
+    # volumes:
+    #   - redis:/data
+
+  daemon:
+    container_name: daemon
+    image: docker.fftaicorp.com/farts/daemon:latest
+    # build:
+    #   name: docker.fftaicorp.com/farts/daemon:latest
+    #   context: ..
+    #   dockerfile: Dockerfile
+    restart: always
+    network_mode: host
+    volumes:
+      - /mnt/Data/recordings:/app/data/${STATION_ID}/:rw
+    # extra_hosts:
+    #   s3.minio.local: 192.168.3.33
+    #   s3.maxio.local: 192.168.3.36
+    #   farts-server-001: 192.168.31.116
+    env_file:
+      - ./.env
+    command: ionice -c 3 nice -n 12 python -m arts_daemon /app/data/${STATION_ID} --num-workers 2
+    depends_on:
+      - redis
+
+  delete-worker:
+    container_name: delete-worker
+    image: docker.fftaicorp.com/farts/daemon:latest
+    restart: always
+    network_mode: host
+    volumes:
+      - /mnt/Data/recordings:/app/data/${STATION_ID}/:rw
+    # extra_hosts:
+    #   s3.minio.local: 192.168.3.33
+    #   s3.maxio.local: 192.168.3.36
+    #   farts-server-001: 192.168.31.116
+    env_file:
+      - ./.env
+    command: ionice -c 3 nice -n 12 rq worker delete --url redis://:9439b1370790bd51ba0@localhost:6379/0
+    depends_on:
+      - redis
+
+volumes:
+  redis:
+    driver: local

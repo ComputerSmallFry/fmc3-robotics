@@ -1,0 +1,13 @@
+[project]
+name = "daq-deploy"
+version = "0.1.0"
+description = "GR3 Docker 容器启动工具GUI"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+daq-gui = "gr3.gr3_gui:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,0 +1,75 @@
+services:
+
+  livekit-server:
+    image: docker.fftaicorp.com/devops/livekit/livekit-server:v1.9.0
+    container_name: livekit-server
+    restart: unless-stopped
+    # ports:
+    #   - "7880:7880"  # WebRTC 信令和管理 API
+    #   - "7881:7881"  # WebRTC 备用 TCP 通信
+    # pull_policy: always
+    # 使用 host 网络模式，避免端口映射问题，提高性能
+    network_mode: "host"
+    environment:
+      - LIVEKIT_CONFIG_FILE=/etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      - ./logs:/var/log/livekitl
+    command: ["--config", "/etc/livekit.yaml"]
+    # LiveKit 资源限制 (可选，生产环境建议启用)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 2G
+    #       cpus: '2.0'
+    #     reservations:
+    #       memory: 1G
+    #       cpus: '1.0'
+
+  teleop-client:
+    image: docker.fftaicorp.com/farts/teleop-client:latest
+    container_name: teleop-client
+    restart: unless-stopped
+    # pull_policy: always
+    network_mode: "host"
+    depends_on:
+      - livekit-server
+    env_file:
+      - livekit.env
+    command: ["bash", "-c", "source /app/.venv/bin/activate && python -m teleop_client.client"]
+    # Teleop Client 1 资源限制 (可选)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 1G
+    #       cpus: '1.0'
+    #     reservations:
+    #       memory: 512M
+    #       cpus: '0.5'
+
+
+  teleop-viewer:
+    image: docker.fftaicorp.com/farts/teleop-client:latest
+    container_name: teleop-viewer
+    restart: unless-stopped
+    # pull_policy: always
+    network_mode: "host"
+    depends_on:
+      - livekit-server
+    env_file:
+      - livekit.env
+    command: ["bash", "-c", "source /app/.venv/bin/activate && python -m teleop_client.viewer"]
+    # Teleop Client 3 资源限制 (可选)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 1G
+    #       cpus: '1.0'
+    #     reservations:
+    #       memory: 512M
+    #       cpus: '0.5'
+ 
+
+networks:
+  livekit-network:
+    driver: bridge

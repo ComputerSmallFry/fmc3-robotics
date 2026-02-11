@@ -1,0 +1,20 @@
+port: 7880
+bind_addresses:
+    - "0.0.0.0"
+logging:
+  level: info
+  json: true
+  pion_level: error
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  port_range_start: 50000
+  port_range_end: 60000
+  enable_loopback_candidate: false
+  use_external_ip: false
+
+keys:
+  a1b2c3d4e5f678901234567890: a1b2c3d4e5f6789012345678901234567890abcdef123456789012345678901234
+room:
+  empty_timeout: 60
+  departure_timeout: 300
