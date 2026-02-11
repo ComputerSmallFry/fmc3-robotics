@@ -181,6 +181,7 @@ CONTAINER_NAME="farther-daqdeploy"
 docker_command="docker run --rm --privileged --name ${CONTAINER_NAME} \
   -v /dev:/dev \
   -v "${LOCAL_MOUNT_PATH}":$HOME/data \
+  -v $HOME/dataset/fourier/dora-record:/tmp \
   --network host"
 
 # If environment file is specified, add --env-file parameter
