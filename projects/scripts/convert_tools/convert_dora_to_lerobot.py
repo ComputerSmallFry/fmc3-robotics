@@ -9,7 +9,7 @@
         --task "遥操作测试" \
         --fps 30 \
         --video-codec libx264 \
-        --robot-type fourier_gr3
+        --robot-type fourier_gr2
 """
 
 import argparse
@@ -24,6 +24,77 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+
+# ===========================================================================
+# GR2 SDK 控制组对齐的关节顺序（29个关节）
+# 顺序: left_manipulator(7) → right_manipulator(7) → left_hand(6) →
+#        right_hand(6) → head(2) → waist(1)
+# ===========================================================================
+
+GR2_JOINT_ORDER = [
+    # left_manipulator (7)
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_pitch_joint",
+    "left_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_roll_joint",
+    # right_manipulator (7)
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_pitch_joint",
+    "right_wrist_yaw_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_roll_joint",
+    # left_hand (6) — SDK 顺序: 食指→中指→无名指→小指→拇指
+    "L_index_proximal_joint",
+    "L_middle_proximal_joint",
+    "L_ring_proximal_joint",
+    "L_pinky_proximal_joint",
+    "L_thumb_proximal_pitch_joint",
+    "L_thumb_proximal_yaw_joint",
+    # right_hand (6)
+    "R_index_proximal_joint",
+    "R_middle_proximal_joint",
+    "R_ring_proximal_joint",
+    "R_pinky_proximal_joint",
+    "R_thumb_proximal_pitch_joint",
+    "R_thumb_proximal_yaw_joint",
+    # head (2)
+    "head_yaw_joint",
+    "head_pitch_joint",
+    # waist (1)
+    "waist_yaw_joint",
+]
+
+
+def reorder_to_target(names, values, target_order):
+    """按目标顺序重排关节列。源数据必须包含 target_order 中的所有关节。"""
+    idx_map = {name: i for i, name in enumerate(names)}
+    missing = [n for n in target_order if n not in idx_map]
+    if missing:
+        raise ValueError(
+            f"源数据缺少以下关节: {missing}\n"
+            f"源数据关节: {names}\n"
+            f"目标顺序: {list(target_order)}"
+        )
+    reorder_idx = [idx_map[n] for n in target_order]
+    return list(target_order), values[:, reorder_idx]
+
+
+# 根据机器人类型定义需要过滤的 action 关节
+ACTION_FILTER_JOINTS = {
+    "fourier_gr2": {"waist_roll_joint", "waist_pitch_joint"},
+    "fourier_gr3": set(),
+}
+
+# 根据机器人类型定义目标关节顺序（对齐 SDK 控制组）
+JOINT_ORDER_MAP = {
+    "fourier_gr2": GR2_JOINT_ORDER,
+}
 
 
 # ===========================================================================
@@ -501,6 +572,14 @@ def convert(args):
 
     print(f"找到 {len(episode_dirs)} 个 episode")
 
+    filter_joints = ACTION_FILTER_JOINTS.get(robot_type, set())
+    if filter_joints:
+        print(f"机器人类型 {robot_type}: 将从 action 中过滤关节 {filter_joints}")
+
+    target_joint_order = JOINT_ORDER_MAP.get(robot_type)
+    if target_joint_order:
+        print(f"机器人类型 {robot_type}: 将按 SDK 控制组顺序重排关节")
+
     # ==== 第一遍：读取所有数据并对齐 ====
     all_action_names = None
     all_state_names = None
@@ -527,6 +606,17 @@ def convert(args):
             print(f"    [WARN] episode {ep_idx} 缺少 action.parquet, 跳过")
             continue
         action_names, action_vals, action_ts = read_named_list_column(action_path, "action")
+
+        # 过滤掉不需要的关节
+        if filter_joints:
+            keep_idx = [i for i, n in enumerate(action_names) if n not in filter_joints]
+            action_names = [action_names[i] for i in keep_idx]
+            action_vals = action_vals[:, keep_idx]
+
+        # 按 SDK 控制组顺序重排 action 关节
+        if target_joint_order:
+            action_names, action_vals = reorder_to_target(action_names, action_vals, target_joint_order)
+
         if all_action_names is None:
             all_action_names = action_names
 
@@ -545,6 +635,9 @@ def convert(args):
         state_path = ep_info.get("observation.state")
         if state_path:
             state_names, state_vals, state_ts = read_named_list_column(state_path, "observation.state")
+            # 按 SDK 控制组顺序重排 state 关节
+            if target_joint_order:
+                state_names, state_vals = reorder_to_target(state_names, state_vals, target_joint_order)
             if all_state_names is None:
                 all_state_names = state_names
         else:
