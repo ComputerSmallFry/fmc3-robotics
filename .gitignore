@@ -1,6 +1,7 @@
 # 原始数据集（体积大，不提交）
 pick_bottle_and_place_into_box/
 *_lerobot/
+*_lerobot_*/
 
 # Python
 __pycache__/

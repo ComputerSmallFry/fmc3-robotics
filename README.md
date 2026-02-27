@@ -113,8 +113,21 @@ Dora-Record                          LeRobot v3.0
 - [CONVERT_GUIDE.md](scripts/convert_tools/CONVERT_GUIDE.md) — 完整转换指南、参数说明、常见问题
 - [GR2推理适配指南.md](scripts/convert_tools/GR2推理适配指南.md) — 策略模型推理部署代码示例
 
+## 上传数据集到 HuggingFace
+
+```bash
+# 上传到个人账号（自动用目录名作为 repo 名）
+bash upload_dataset.sh ./fourier/pick_bottle_and_place_into_box_lerobot_gr2
+
+# 上传到指定组织
+bash upload_dataset.sh ./fourier/pick_bottle_and_place_into_box_lerobot_gr2 FourierIntelligence
+```
+
+脚本会自动校验 LeRobot 格式、检查 HuggingFace 登录状态，确认后上传。
+
 ## 依赖
 
 - Python 3.10+
 - pyarrow, numpy, pandas, Pillow
 - ffmpeg（系统安装或 conda 安装）
+- huggingface_hub（上传数据集时需要）
