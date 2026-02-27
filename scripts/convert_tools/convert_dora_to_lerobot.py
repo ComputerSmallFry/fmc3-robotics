@@ -382,7 +382,6 @@ def encode_video_from_frames(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     ffmpeg_bin = _find_ffmpeg()
-    print(f"    使用 ffmpeg: {ffmpeg_bin}")
     cmd = [
         ffmpeg_bin, "-y",
         "-f", "rawvideo",
@@ -603,6 +602,10 @@ def convert(args):
     has_depth = False
     has_base_action = False
     has_base_state = False
+    sampled_rgb_frames = []  # 采样帧用于全局统计（避免全量内存占用）
+    sampled_depth_frames = []
+    episode_video_info = {}  # ep_idx -> {chunk, file, from_ts, to_ts}
+    episode_depth_info = {}
 
     for ep_idx, ep_dir in enumerate(episode_dirs):
         print(f"  读取 episode {ep_idx}: {ep_dir.name} ...")
@@ -734,6 +737,51 @@ def convert(args):
             resampled_depth = resample_images_to_timestamps(depth_raw, depth_ts, target_ts)
             frames_depth = [raw_to_depth_array(d) for d in resampled_depth]
 
+        # ---- 流式处理：逐 episode 编码视频 + 计算统计 + 释放内存 ----
+        ep_rgb_stats = compute_image_stats([])
+        ep_depth_stats = compute_image_stats([])
+
+        if has_images and frames_rgb:
+            vid_dir = output_dir / "videos" / video_key / "chunk-000"
+            vid_dir.mkdir(parents=True, exist_ok=True)
+            vid_path = vid_dir / f"file-{ep_idx:03d}.mp4"
+            print(f"    编码 RGB 视频 ({len(frames_rgb)} 帧) -> {vid_path.name}")
+            encode_video_from_frames(frames_rgb, vid_path, fps, codec=video_codec)
+            ep_rgb_stats = compute_image_stats(frames_rgb)
+            episode_video_info[ep_idx] = {
+                "chunk": 0, "file": ep_idx,
+                "from_ts": 0.0, "to_ts": (n_frames - 1) / fps,
+            }
+            sample_idx = np.linspace(0, len(frames_rgb) - 1, min(5, len(frames_rgb)), dtype=int)
+            sampled_rgb_frames.extend([frames_rgb[i] for i in sample_idx])
+            del frames_rgb
+
+        if has_depth and frames_depth:
+            depth_vid_dir = output_dir / "videos" / depth_key / "chunk-000"
+            depth_vid_dir.mkdir(parents=True, exist_ok=True)
+            depth_vid_path = depth_vid_dir / f"file-{ep_idx:03d}.mp4"
+            depth_rgb_frames = []
+            for d in frames_depth:
+                if d.ndim == 2:
+                    d8 = (d.astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d.astype(np.uint8)
+                    depth_rgb_frames.append(np.stack([d8, d8, d8], axis=2))
+                elif d.ndim == 3 and d.shape[2] == 1:
+                    d8 = (d[:, :, 0].astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d[:, :, 0].astype(np.uint8)
+                    depth_rgb_frames.append(np.stack([d8, d8, d8], axis=2))
+                else:
+                    depth_rgb_frames.append(d[:, :, :3] if d.shape[2] >= 3 else np.repeat(d, 3, axis=2))
+            print(f"    编码深度视频 ({len(depth_rgb_frames)} 帧) -> {depth_vid_path.name}")
+            encode_video_from_frames(depth_rgb_frames, depth_vid_path, fps, codec=video_codec)
+            del depth_rgb_frames
+            ep_depth_stats = compute_image_stats(frames_depth)
+            episode_depth_info[ep_idx] = {
+                "chunk": 0, "file": ep_idx,
+                "from_ts": 0.0, "to_ts": (n_frames - 1) / fps,
+            }
+            sample_idx = np.linspace(0, len(frames_depth) - 1, min(5, len(frames_depth)), dtype=int)
+            sampled_depth_frames.extend([frames_depth[i] for i in sample_idx])
+            del frames_depth
+
         episode_data_list.append({
             "episode_index": ep_idx,
             "n_frames": n_frames,
@@ -741,8 +789,8 @@ def convert(args):
             "state": state_resampled,
             "base_action": base_action_resampled,
             "base_state": base_state_resampled,
-            "frames_rgb": frames_rgb,
-            "frames_depth": frames_depth,
+            "rgb_stats": ep_rgb_stats,
+            "depth_stats": ep_depth_stats,
             "metadata": meta,
         })
 
@@ -835,86 +883,7 @@ def convert(args):
     pq.write_table(table, str(data_path))
     print(f"  写入: {data_path} ({total_frames} 行)")
 
-    # ==== 编码视频 ====
-    video_file_index = 0
-    episode_video_info = {}  # ep_idx -> {chunk, file, from_ts, to_ts}
-    if has_images:
-        print("\n编码 RGB 视频 ...")
-        cumulative_time = 0.0
-        for ep in episode_data_list:
-            if ep["frames_rgb"] is None:
-                episode_video_info[ep["episode_index"]] = {
-                    "chunk": 0, "file": video_file_index,
-                    "from_ts": 0.0, "to_ts": 0.0,
-                }
-                continue
-
-            from_ts = cumulative_time
-            to_ts = from_ts + (ep["n_frames"] - 1) / fps
-
-            episode_video_info[ep["episode_index"]] = {
-                "chunk": 0, "file": video_file_index,
-                "from_ts": from_ts, "to_ts": to_ts,
-            }
-            cumulative_time = from_ts + ep["n_frames"] / fps
-
-        # 将所有帧合并写入一个视频文件
-        all_frames = []
-        for ep in episode_data_list:
-            if ep["frames_rgb"]:
-                all_frames.extend(ep["frames_rgb"])
-
-        if all_frames:
-            video_path = (
-                output_dir / "videos" / video_key / "chunk-000" / f"file-{video_file_index:03d}.mp4"
-            )
-            print(f"  编码 {len(all_frames)} 帧 -> {video_path}")
-            encode_video_from_frames(all_frames, video_path, fps, codec=video_codec)
-            print(f"  完成")
-
-    # 编码深度视频
-    depth_file_index = 0
-    episode_depth_info = {}
-    if has_depth:
-        print("\n编码深度视频 ...")
-        cumulative_time = 0.0
-        all_depth_frames = []
-        for ep in episode_data_list:
-            if ep["frames_depth"] is None:
-                episode_depth_info[ep["episode_index"]] = {
-                    "chunk": 0, "file": depth_file_index,
-                    "from_ts": 0.0, "to_ts": 0.0,
-                }
-                continue
-
-            from_ts = cumulative_time
-            to_ts = from_ts + (ep["n_frames"] - 1) / fps
-
-            episode_depth_info[ep["episode_index"]] = {
-                "chunk": 0, "file": depth_file_index,
-                "from_ts": from_ts, "to_ts": to_ts,
-            }
-            cumulative_time = from_ts + ep["n_frames"] / fps
-
-            # 深度图转灰度 RGB（16bit -> 8bit 可视化，或保持原样编码）
-            for d in ep["frames_depth"]:
-                if d.ndim == 2:
-                    # 16bit 深度 -> 归一化到 8bit 灰度 -> 伪 RGB
-                    d8 = (d.astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d.astype(np.uint8)
-                    all_depth_frames.append(np.stack([d8, d8, d8], axis=2))
-                elif d.ndim == 3 and d.shape[2] == 1:
-                    d8 = (d[:, :, 0].astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d[:, :, 0].astype(np.uint8)
-                    all_depth_frames.append(np.stack([d8, d8, d8], axis=2))
-                else:
-                    all_depth_frames.append(d[:, :, :3] if d.shape[2] >= 3 else np.repeat(d, 3, axis=2))
-
-        if all_depth_frames:
-            depth_video_path = (
-                output_dir / "videos" / depth_key / "chunk-000" / f"file-{depth_file_index:03d}.mp4"
-            )
-            print(f"  编码 {len(all_depth_frames)} 帧 -> {depth_video_path}")
-            encode_video_from_frames(all_depth_frames, depth_video_path, fps, codec=video_codec)
-            print(f"  完成")
+    # ==== 视频已在上方逐 episode 编码完成 ====
 
     # ==== 写 tasks parquet ====
     print("\n生成 meta/tasks.parquet ...")
@@ -934,7 +903,7 @@ def convert(args):
         # 每 episode 统计
         ep_action_stats = compute_stats(ep["action"])
         ep_state_stats = compute_stats(ep["state"])
-        ep_img_stats = compute_image_stats(ep["frames_rgb"] or [])
+        ep_img_stats = ep["rgb_stats"]
 
         timestamps = [float(i) / fps for i in range(n)]
         frame_indices = list(range(n))
@@ -990,7 +959,7 @@ def convert(args):
             ("stats/task_index", task_stats),
         ]
         if has_depth:
-            ep_depth_stats = compute_image_stats(ep["frames_depth"] or [])
+            ep_depth_stats = ep["depth_stats"]
             stats_list.append((f"stats/{depth_key}", ep_depth_stats))
 
         for prefix, stats in stats_list:
@@ -1031,21 +1000,13 @@ def convert(args):
         "task_index": {"min": [0], "max": [0], "mean": [0.0], "std": [0.0], "count": [total_frames]},
     }
 
-    # RGB 图像全局统计
+    # RGB 图像全局统计（使用采样帧）
     if has_images:
-        all_rgb = []
-        for ep in episode_data_list:
-            if ep["frames_rgb"]:
-                all_rgb.extend(ep["frames_rgb"])
-        global_stats[video_key] = compute_image_stats(all_rgb)
+        global_stats[video_key] = compute_image_stats(sampled_rgb_frames)
 
-    # 深度图像全局统计
+    # 深度图像全局统计（使用采样帧）
     if has_depth:
-        all_depth = []
-        for ep in episode_data_list:
-            if ep["frames_depth"]:
-                all_depth.extend(ep["frames_depth"])
-        global_stats[depth_key] = compute_image_stats(all_depth)
+        global_stats[depth_key] = compute_image_stats(sampled_depth_frames)
 
     stats_path = output_dir / "meta" / "stats.json"
     with open(stats_path, "w") as f:
