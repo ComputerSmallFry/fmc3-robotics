@@ -18,6 +18,7 @@ import math
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -546,6 +547,226 @@ def build_info_json(
 
 
 # ===========================================================================
+# 单 episode 处理（支持独立进程运行）
+# ===========================================================================
+
+def _process_single_episode(
+    ep_idx, ep_dir_str, fps, filter_joints_list, target_joint_order,
+    no_video, output_dir_str, video_key, depth_key, video_codec,
+):
+    """在独立进程中处理单个 episode：读取、重采样、编码视频、统计。"""
+    ep_dir = Path(ep_dir_str)
+    output_dir = Path(output_dir_str)
+    filter_joints = set(filter_joints_list)
+
+    ep_info = read_dora_episode_dir(ep_dir)
+    if ep_info is None:
+        return None
+    meta = ep_info["metadata"]
+
+    # 读取 action
+    action_path = ep_info.get("action")
+    if action_path is None:
+        print(f"  [{ep_idx}] 缺少 action.parquet, 跳过")
+        return None
+    action_names, action_vals, action_ts = read_named_list_column(action_path, "action")
+
+    if filter_joints:
+        keep_idx = [i for i, n in enumerate(action_names) if n not in filter_joints]
+        action_names = [action_names[i] for i in keep_idx]
+        action_vals = action_vals[:, keep_idx]
+
+    if target_joint_order:
+        action_names, action_vals = reorder_to_target(action_names, action_vals, target_joint_order)
+
+    # 读取 action.base
+    base_action_path = ep_info.get("action.base")
+    base_action_vals, base_action_ts = None, None
+    base_action_names = None
+    if base_action_path:
+        base_action_names, base_action_vals, base_action_ts = read_named_list_column(
+            base_action_path, "action.base"
+        )
+
+    # 读取 observation.state
+    state_path = ep_info.get("observation.state")
+    if state_path:
+        state_names, state_vals, state_ts = read_named_list_column(state_path, "observation.state")
+        if target_joint_order:
+            state_names, state_vals = reorder_to_target(state_names, state_vals, target_joint_order)
+    else:
+        state_names = list(action_names)
+        state_vals = action_vals.copy()
+        state_ts = action_ts.copy()
+
+    # 读取 observation.base_state
+    base_state_path = ep_info.get("observation.base_state")
+    base_state_vals, base_state_ts = None, None
+    base_state_names = None
+    if base_state_path:
+        base_state_names, base_state_vals, base_state_ts = read_base_state_column(base_state_path)
+
+    # 读取 RGB 图像
+    img_path = ep_info.get("observation.images.camera_top")
+    images_raw, img_ts = None, None
+    video_height, video_width, video_channels = None, None, None
+    has_images = False
+    if img_path and not no_video:
+        images_raw, img_ts = read_image_column(img_path, "observation.images.camera_top")
+        if images_raw:
+            shape = detect_image_shape(images_raw[0])
+            if shape:
+                video_height, video_width, video_channels = shape
+                has_images = True
+
+    # 读取深度图像
+    depth_path = ep_info.get("observation.images.camera_top_depth")
+    depth_raw, depth_ts = None, None
+    depth_height, depth_width = None, None
+    has_depth = False
+    if depth_path and not no_video:
+        depth_raw, depth_ts = read_image_column(depth_path, "observation.images.camera_top_depth")
+        if depth_raw:
+            depth_shape = detect_image_shape(depth_raw[0])
+            if depth_shape:
+                depth_height, depth_width = depth_shape[0], depth_shape[1]
+                has_depth = True
+
+    # 生成统一时间轴
+    start_ns = action_ts[0]
+    end_ns = action_ts[-1]
+    target_ts = generate_uniform_timestamps(start_ns, end_ns, fps)
+    n_frames = len(target_ts)
+
+    if n_frames == 0:
+        print(f"  [{ep_idx}] 帧数为 0, 跳过")
+        return None
+
+    # 重采样
+    action_resampled = resample_to_timestamps(action_vals, action_ts, target_ts).astype(np.float32)
+    state_resampled = resample_to_timestamps(state_vals, state_ts, target_ts).astype(np.float32)
+
+    base_action_resampled = None
+    if base_action_vals is not None and base_action_ts is not None:
+        base_action_resampled = resample_to_timestamps(
+            base_action_vals, base_action_ts, target_ts
+        ).astype(np.float32)
+
+    base_state_resampled = None
+    if base_state_vals is not None and base_state_ts is not None:
+        base_state_resampled = resample_to_timestamps(
+            base_state_vals, base_state_ts, target_ts
+        ).astype(np.float32)
+
+    # 重采样 RGB 图像
+    frames_rgb = None
+    if has_images and images_raw is not None and img_ts is not None:
+        resampled_imgs = resample_images_to_timestamps(images_raw, img_ts, target_ts)
+        frames_rgb = [
+            raw_to_rgb_array(img_bytes, video_height, video_width, video_channels)
+            for img_bytes in resampled_imgs
+        ]
+        del images_raw, resampled_imgs
+
+    # 重采样深度图像
+    frames_depth = None
+    if has_depth and depth_raw is not None and depth_ts is not None:
+        resampled_depth = resample_images_to_timestamps(depth_raw, depth_ts, target_ts)
+        frames_depth = [raw_to_depth_array(d) for d in resampled_depth]
+        del depth_raw, resampled_depth
+
+    # 编码视频 + 计算统计
+    ep_rgb_stats = compute_image_stats([])
+    ep_depth_stats = compute_image_stats([])
+    video_info = None
+    depth_info = None
+
+    if has_images and frames_rgb:
+        vid_dir = output_dir / "videos" / video_key / "chunk-000"
+        vid_dir.mkdir(parents=True, exist_ok=True)
+        vid_path = vid_dir / f"file-{ep_idx:03d}.mp4"
+        print(f"  [{ep_idx}] 编码 RGB 视频 ({len(frames_rgb)} 帧)")
+        encode_video_from_frames(frames_rgb, vid_path, fps, codec=video_codec)
+        ep_rgb_stats = compute_image_stats(frames_rgb)
+        video_info = {"chunk": 0, "file": ep_idx, "from_ts": 0.0, "to_ts": (n_frames - 1) / fps}
+        del frames_rgb
+
+    if has_depth and frames_depth:
+        depth_vid_dir = output_dir / "videos" / depth_key / "chunk-000"
+        depth_vid_dir.mkdir(parents=True, exist_ok=True)
+        depth_vid_path = depth_vid_dir / f"file-{ep_idx:03d}.mp4"
+        depth_rgb_frames = []
+        for d in frames_depth:
+            if d.ndim == 2:
+                d8 = (d.astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d.astype(np.uint8)
+                depth_rgb_frames.append(np.stack([d8, d8, d8], axis=2))
+            elif d.ndim == 3 and d.shape[2] == 1:
+                d8 = (d[:, :, 0].astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d[:, :, 0].astype(np.uint8)
+                depth_rgb_frames.append(np.stack([d8, d8, d8], axis=2))
+            else:
+                depth_rgb_frames.append(d[:, :, :3] if d.shape[2] >= 3 else np.repeat(d, 3, axis=2))
+        print(f"  [{ep_idx}] 编码深度视频 ({len(depth_rgb_frames)} 帧)")
+        encode_video_from_frames(depth_rgb_frames, depth_vid_path, fps, codec=video_codec)
+        del depth_rgb_frames
+        ep_depth_stats = compute_image_stats(frames_depth)
+        depth_info = {"chunk": 0, "file": ep_idx, "from_ts": 0.0, "to_ts": (n_frames - 1) / fps}
+        del frames_depth
+
+    print(f"  [{ep_idx}] 完成 ({n_frames} 帧)")
+
+    return {
+        "episode_index": ep_idx,
+        "n_frames": n_frames,
+        "action": action_resampled,
+        "state": state_resampled,
+        "base_action": base_action_resampled,
+        "base_state": base_state_resampled,
+        "action_names": action_names,
+        "state_names": state_names,
+        "base_action_names": base_action_names,
+        "base_state_names": base_state_names,
+        "has_images": has_images,
+        "has_depth": has_depth,
+        "video_height": video_height,
+        "video_width": video_width,
+        "video_channels": video_channels,
+        "depth_height": depth_height,
+        "depth_width": depth_width,
+        "rgb_stats": ep_rgb_stats,
+        "depth_stats": ep_depth_stats,
+        "video_info": video_info,
+        "depth_info": depth_info,
+        "metadata": meta,
+    }
+
+
+def _merge_image_stats(stats_list):
+    """数学合并多个 episode 的图像统计（避免保留原始帧）。"""
+    valid = [s for s in stats_list if s["count"][0] > 0]
+    if not valid:
+        return compute_image_stats([])
+
+    c = len(valid[0]["min"])  # channels
+    total_count = sum(s["count"][0] for s in valid)
+    merged = {"min": [], "max": [], "mean": [], "std": [], "count": [total_count]}
+
+    for ch in range(c):
+        ch_min = min(s["min"][ch][0][0] for s in valid)
+        ch_max = max(s["max"][ch][0][0] for s in valid)
+        ch_mean = sum(s["mean"][ch][0][0] * s["count"][0] for s in valid) / total_count
+        ch_var = sum(
+            s["count"][0] * (s["std"][ch][0][0] ** 2 + (s["mean"][ch][0][0] - ch_mean) ** 2)
+            for s in valid
+        ) / total_count
+        merged["min"].append([[ch_min]])
+        merged["max"].append([[ch_max]])
+        merged["mean"].append([[ch_mean]])
+        merged["std"].append([[ch_var ** 0.5]])
+
+    return merged
+
+
+# ===========================================================================
 # 主转换流程
 # ===========================================================================
 
@@ -590,208 +811,99 @@ def convert(args):
     if target_joint_order:
         print(f"机器人类型 {robot_type}: 将按 SDK 控制组顺序重排关节")
 
-    # ==== 第一遍：读取所有数据并对齐 ====
+    # ==== 并行处理所有 episode ====
+    workers = args.workers
     all_action_names = None
     all_state_names = None
     all_base_action_names = None
     all_base_state_names = None
-    episode_data_list = []  # 每个 episode 的对齐后数据
+    episode_data_list = []
     video_height, video_width, video_channels = None, None, None
     depth_height, depth_width = None, None
     has_images = False
     has_depth = False
     has_base_action = False
     has_base_state = False
-    sampled_rgb_frames = []  # 采样帧用于全局统计（避免全量内存占用）
-    sampled_depth_frames = []
-    episode_video_info = {}  # ep_idx -> {chunk, file, from_ts, to_ts}
+    episode_video_info = {}
     episode_depth_info = {}
+    all_rgb_stats = []
+    all_depth_stats = []
 
-    for ep_idx, ep_dir in enumerate(episode_dirs):
-        print(f"  读取 episode {ep_idx}: {ep_dir.name} ...")
-        ep_info = read_dora_episode_dir(ep_dir)
-        if ep_info is None:
-            continue
-        meta = ep_info["metadata"]
+    common_args = (
+        fps, list(filter_joints),
+        list(target_joint_order) if target_joint_order else None,
+        no_video, str(output_dir), video_key, depth_key, video_codec,
+    )
 
-        # 读取 action
-        action_path = ep_info.get("action")
-        if action_path is None:
-            print(f"    [WARN] episode {ep_idx} 缺少 action.parquet, 跳过")
-            continue
-        action_names, action_vals, action_ts = read_named_list_column(action_path, "action")
+    print(f"\n使用 {workers} 个进程并行处理 {len(episode_dirs)} 个 episode ...")
 
-        # 过滤掉不需要的关节
-        if filter_joints:
-            keep_idx = [i for i, n in enumerate(action_names) if n not in filter_joints]
-            action_names = [action_names[i] for i in keep_idx]
-            action_vals = action_vals[:, keep_idx]
+    if workers <= 1:
+        # 顺序处理
+        raw_results = []
+        for ep_idx, ep_dir in enumerate(episode_dirs):
+            r = _process_single_episode(ep_idx, str(ep_dir), *common_args)
+            if r is not None:
+                raw_results.append(r)
+    else:
+        # 并行处理
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    _process_single_episode, ep_idx, str(ep_dir), *common_args
+                ): ep_idx
+                for ep_idx, ep_dir in enumerate(episode_dirs)
+            }
+            raw_results = []
+            for future in as_completed(futures):
+                try:
+                    r = future.result()
+                    if r is not None:
+                        raw_results.append(r)
+                except Exception as e:
+                    print(f"  [ERROR] episode {futures[future]}: {e}")
 
-        # 按 SDK 控制组顺序重排 action 关节
-        if target_joint_order:
-            action_names, action_vals = reorder_to_target(action_names, action_vals, target_joint_order)
+    # 按 episode 顺序排序并整理结果
+    raw_results.sort(key=lambda x: x["episode_index"])
 
+    for r in raw_results:
         if all_action_names is None:
-            all_action_names = action_names
-
-        # 读取 action.base
-        base_action_path = ep_info.get("action.base")
-        base_action_vals, base_action_ts = None, None
-        if base_action_path:
-            base_action_names, base_action_vals, base_action_ts = read_named_list_column(
-                base_action_path, "action.base"
-            )
-            if all_base_action_names is None:
-                all_base_action_names = base_action_names
-                has_base_action = True
-
-        # 读取 observation.state
-        state_path = ep_info.get("observation.state")
-        if state_path:
-            state_names, state_vals, state_ts = read_named_list_column(state_path, "observation.state")
-            # 按 SDK 控制组顺序重排 state 关节
-            if target_joint_order:
-                state_names, state_vals = reorder_to_target(state_names, state_vals, target_joint_order)
-            if all_state_names is None:
-                all_state_names = state_names
-        else:
-            state_names, state_vals, state_ts = action_names, action_vals.copy(), action_ts.copy()
-            if all_state_names is None:
-                all_state_names = action_names
-
-        # 读取 observation.base_state
-        base_state_path = ep_info.get("observation.base_state")
-        base_state_vals, base_state_ts = None, None
-        if base_state_path:
-            base_state_names, base_state_vals, base_state_ts = read_base_state_column(base_state_path)
-            if all_base_state_names is None:
-                all_base_state_names = base_state_names
-                has_base_state = True
-
-        # 读取 RGB 图像
-        img_path = ep_info.get("observation.images.camera_top")
-        images_raw, img_ts = None, None
-        if img_path and not no_video:
-            images_raw, img_ts = read_image_column(img_path, "observation.images.camera_top")
-            if images_raw and not has_images:
-                shape = detect_image_shape(images_raw[0])
-                if shape:
-                    video_height, video_width, video_channels = shape
-                    has_images = True
-                    print(f"    检测到 RGB 图像尺寸: {video_height}x{video_width}x{video_channels}")
-
-        # 读取深度图像
-        depth_path = ep_info.get("observation.images.camera_top_depth")
-        depth_raw, depth_ts = None, None
-        if depth_path and not no_video:
-            depth_raw, depth_ts = read_image_column(depth_path, "observation.images.camera_top_depth")
-            if depth_raw and not has_depth:
-                depth_shape = detect_image_shape(depth_raw[0])
-                if depth_shape:
-                    depth_height, depth_width = depth_shape[0], depth_shape[1]
-                    has_depth = True
-                    print(f"    检测到深度图像尺寸: {depth_height}x{depth_width}")
-
-        # 确定时间范围（从 action 时间戳）
-        start_ns = action_ts[0]
-        end_ns = action_ts[-1]
-
-        # 生成统一时间轴
-        target_ts = generate_uniform_timestamps(start_ns, end_ns, fps)
-        n_frames = len(target_ts)
-
-        if n_frames == 0:
-            print(f"    [WARN] episode {ep_idx} 帧数为 0, 跳过")
-            continue
-
-        # 重采样 action 和 state 到统一时间轴
-        action_resampled = resample_to_timestamps(action_vals, action_ts, target_ts).astype(np.float32)
-        state_resampled = resample_to_timestamps(state_vals, state_ts, target_ts).astype(np.float32)
-
-        # 重采样 action.base
-        base_action_resampled = None
-        if base_action_vals is not None and base_action_ts is not None:
-            base_action_resampled = resample_to_timestamps(
-                base_action_vals, base_action_ts, target_ts
-            ).astype(np.float32)
-
-        # 重采样 observation.base_state
-        base_state_resampled = None
-        if base_state_vals is not None and base_state_ts is not None:
-            base_state_resampled = resample_to_timestamps(
-                base_state_vals, base_state_ts, target_ts
-            ).astype(np.float32)
-
-        # 重采样 RGB 图像
-        frames_rgb = None
-        if has_images and images_raw is not None and img_ts is not None:
-            resampled_imgs = resample_images_to_timestamps(images_raw, img_ts, target_ts)
-            frames_rgb = [
-                raw_to_rgb_array(img_bytes, video_height, video_width, video_channels)
-                for img_bytes in resampled_imgs
-            ]
-
-        # 重采样深度图像
-        frames_depth = None
-        if has_depth and depth_raw is not None and depth_ts is not None:
-            resampled_depth = resample_images_to_timestamps(depth_raw, depth_ts, target_ts)
-            frames_depth = [raw_to_depth_array(d) for d in resampled_depth]
-
-        # ---- 流式处理：逐 episode 编码视频 + 计算统计 + 释放内存 ----
-        ep_rgb_stats = compute_image_stats([])
-        ep_depth_stats = compute_image_stats([])
-
-        if has_images and frames_rgb:
-            vid_dir = output_dir / "videos" / video_key / "chunk-000"
-            vid_dir.mkdir(parents=True, exist_ok=True)
-            vid_path = vid_dir / f"file-{ep_idx:03d}.mp4"
-            print(f"    编码 RGB 视频 ({len(frames_rgb)} 帧) -> {vid_path.name}")
-            encode_video_from_frames(frames_rgb, vid_path, fps, codec=video_codec)
-            ep_rgb_stats = compute_image_stats(frames_rgb)
-            episode_video_info[ep_idx] = {
-                "chunk": 0, "file": ep_idx,
-                "from_ts": 0.0, "to_ts": (n_frames - 1) / fps,
-            }
-            sample_idx = np.linspace(0, len(frames_rgb) - 1, min(5, len(frames_rgb)), dtype=int)
-            sampled_rgb_frames.extend([frames_rgb[i] for i in sample_idx])
-            del frames_rgb
-
-        if has_depth and frames_depth:
-            depth_vid_dir = output_dir / "videos" / depth_key / "chunk-000"
-            depth_vid_dir.mkdir(parents=True, exist_ok=True)
-            depth_vid_path = depth_vid_dir / f"file-{ep_idx:03d}.mp4"
-            depth_rgb_frames = []
-            for d in frames_depth:
-                if d.ndim == 2:
-                    d8 = (d.astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d.astype(np.uint8)
-                    depth_rgb_frames.append(np.stack([d8, d8, d8], axis=2))
-                elif d.ndim == 3 and d.shape[2] == 1:
-                    d8 = (d[:, :, 0].astype(np.float32) / d.max() * 255).astype(np.uint8) if d.max() > 0 else d[:, :, 0].astype(np.uint8)
-                    depth_rgb_frames.append(np.stack([d8, d8, d8], axis=2))
-                else:
-                    depth_rgb_frames.append(d[:, :, :3] if d.shape[2] >= 3 else np.repeat(d, 3, axis=2))
-            print(f"    编码深度视频 ({len(depth_rgb_frames)} 帧) -> {depth_vid_path.name}")
-            encode_video_from_frames(depth_rgb_frames, depth_vid_path, fps, codec=video_codec)
-            del depth_rgb_frames
-            ep_depth_stats = compute_image_stats(frames_depth)
-            episode_depth_info[ep_idx] = {
-                "chunk": 0, "file": ep_idx,
-                "from_ts": 0.0, "to_ts": (n_frames - 1) / fps,
-            }
-            sample_idx = np.linspace(0, len(frames_depth) - 1, min(5, len(frames_depth)), dtype=int)
-            sampled_depth_frames.extend([frames_depth[i] for i in sample_idx])
-            del frames_depth
+            all_action_names = r["action_names"]
+        if all_state_names is None:
+            all_state_names = r["state_names"]
+        if r["base_action_names"] and all_base_action_names is None:
+            all_base_action_names = r["base_action_names"]
+            has_base_action = True
+        if r["base_state_names"] and all_base_state_names is None:
+            all_base_state_names = r["base_state_names"]
+            has_base_state = True
+        if r["has_images"] and not has_images:
+            video_height = r["video_height"]
+            video_width = r["video_width"]
+            video_channels = r["video_channels"]
+            has_images = True
+        if r["has_depth"] and not has_depth:
+            depth_height = r["depth_height"]
+            depth_width = r["depth_width"]
+            has_depth = True
+        if r["video_info"]:
+            episode_video_info[r["episode_index"]] = r["video_info"]
+        if r["depth_info"]:
+            episode_depth_info[r["episode_index"]] = r["depth_info"]
+        if r["has_images"]:
+            all_rgb_stats.append(r["rgb_stats"])
+        if r["has_depth"]:
+            all_depth_stats.append(r["depth_stats"])
 
         episode_data_list.append({
-            "episode_index": ep_idx,
-            "n_frames": n_frames,
-            "action": action_resampled,
-            "state": state_resampled,
-            "base_action": base_action_resampled,
-            "base_state": base_state_resampled,
-            "rgb_stats": ep_rgb_stats,
-            "depth_stats": ep_depth_stats,
-            "metadata": meta,
+            "episode_index": r["episode_index"],
+            "n_frames": r["n_frames"],
+            "action": r["action"],
+            "state": r["state"],
+            "base_action": r["base_action"],
+            "base_state": r["base_state"],
+            "rgb_stats": r["rgb_stats"],
+            "depth_stats": r["depth_stats"],
+            "metadata": r["metadata"],
         })
 
     if not episode_data_list:
@@ -1000,13 +1112,13 @@ def convert(args):
         "task_index": {"min": [0], "max": [0], "mean": [0.0], "std": [0.0], "count": [total_frames]},
     }
 
-    # RGB 图像全局统计（使用采样帧）
+    # RGB 图像全局统计（数学合并各 episode 统计）
     if has_images:
-        global_stats[video_key] = compute_image_stats(sampled_rgb_frames)
+        global_stats[video_key] = _merge_image_stats(all_rgb_stats)
 
-    # 深度图像全局统计（使用采样帧）
+    # 深度图像全局统计（数学合并各 episode 统计）
     if has_depth:
-        global_stats[depth_key] = compute_image_stats(sampled_depth_frames)
+        global_stats[depth_key] = _merge_image_stats(all_depth_stats)
 
     stats_path = output_dir / "meta" / "stats.json"
     with open(stats_path, "w") as f:
@@ -1088,6 +1200,10 @@ def main():
     parser.add_argument(
         "--robot-type", default="fourier_gr3",
         help="机器人类型 (默认: fourier_gr3)",
+    )
+    parser.add_argument(
+        "--workers", "-w", type=int, default=1,
+        help="并行处理 episode 的进程数 (默认: 1, 即顺序处理)",
     )
     parser.add_argument(
         "--no-video", action="store_true",

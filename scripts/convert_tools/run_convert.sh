@@ -5,4 +5,5 @@ python ~/workspace/dataset/fourier/scripts/convert_tools/convert_dora_to_lerobot
     --task "pick bottle and place into box" \
     --fps 30 \
     --robot-type fourier_gr2 \
-    --video-codec libopenh264
+    --video-codec libopenh264 \
+    --workers 4

@@ -14,7 +14,8 @@ python convert_dora_to_lerobot.py \
     --task "grab the bottle on the table" \
     --fps 30 \
     --robot-type fourier_gr2 \
-    --video-codec libopenh264
+    --video-codec libopenh264 \
+    --workers 4  # 4 进程并行，加速约 3-4 倍
 
 # 或使用 run_convert.sh
 bash run_convert.sh
@@ -30,6 +31,7 @@ bash run_convert.sh
 | `--fps` | - | 否 | `30` | 输出数据集的帧率。所有传感器数据会被重采样到这个统一帧率 |
 | `--video-codec` | - | 否 | `libx264` | ffmpeg 视频编码器。conda 环境下推荐 `libopenh264`，系统 ffmpeg 可用 `libx264` 或 `libsvtav1`(AV1) |
 | `--robot-type` | - | 否 | `fourier_gr3` | 机器人类型标识，写入 info.json，训练时用于区分不同机器人 |
+| `--workers` | `-w` | 否 | `1` | 并行处理 episode 的进程数。设为 CPU 核数的一半左右可大幅加速，每个进程占约 2GB 内存 |
 | `--no-video` | - | 否 | `false` | 加上此参数跳过图像/视频处理，只转换关节状态和动作数据 |
 
 ### video-codec 可选值
@@ -216,10 +218,14 @@ pick_and_place/
 └── videos/
     ├── observation.images.camera_top/
     │   └── chunk-000/
-    │       └── file-000.mp4                         # RGB 视频（所有 episode 合并）
+    │       ├── file-000.mp4                         # episode 0 的 RGB 视频
+    │       ├── file-001.mp4                         # episode 1 的 RGB 视频
+    │       └── ...
     └── observation.images.camera_top_depth/
         └── chunk-000/
-            └── file-000.mp4                         # 深度视频（所有 episode 合并）
+            ├── file-000.mp4                         # episode 0 的深度视频
+            ├── file-001.mp4
+            └── ...
 ```
 
 ### data/chunk-000/file-000.parquet — 帧级数据
@@ -306,7 +312,7 @@ pick_and_place/
 
 ### 视频存储方式
 
-所有 episode 的帧**合并到同一个 mp4 文件**中（与 LeRobot 标准一致）。每个 episode 在视频中的位置由 episodes parquet 中的 `from_timestamp` 和 `to_timestamp` 指定。训练时框架根据时间戳自动从视频中提取对应帧。
+每个 episode 的帧独立编码为一个 mp4 文件（`file-000.mp4`、`file-001.mp4` ...），符合 LeRobot v3.0 规范。每个 episode 在视频中的位置由 episodes parquet 中的 `from_timestamp` 和 `to_timestamp` 指定（每个文件从 0 开始）。
 
 ## 转换流程详解
 
@@ -343,9 +349,10 @@ state  = [29维手臂关节] + [16维底盘状态] = 45维
 ### 第四步：编码视频
 
 ```
-所有 episode 的 RGB 帧拼接 → 一个 mp4 文件
-所有 episode 的深度帧拼接 → 一个 mp4 文件（深度图归一化为 8bit 灰度伪 RGB）
-记录每个 episode 在视频中的起止时间戳
+逐 episode 编码视频（处理完一个立即释放内存，避免 OOM）：
+  每个 episode 的 RGB 帧 → file-{ep_idx:03d}.mp4
+  每个 episode 的深度帧 → file-{ep_idx:03d}.mp4（深度图归一化为 8bit 灰度伪 RGB）
+使用 --workers N 可并行编码 N 个 episode（多进程）
 ```
 
 ### 第五步：生成 LeRobot 元数据
@@ -369,7 +376,8 @@ state  = [29维手臂关节] + [16维底盘状态] = 45维
 ### Q: 只想转换状态/动作数据，不需要图像
 **A:** 加 `--no-video` 参数。
 
-### Q: 转换后数据量太大
+### Q: 转换时内存占用过高 / 死机
+**A:** 脚本已优化为逐 episode 流式处理，单进程峰值约 2GB。使用 `--workers N` 并行时峰值约 N×2GB。64GB 内存建议 `--workers 4~8`。
 **A:** 视频是主要的空间占用。可以用 `--video-codec libsvtav1`（AV1）获得更好的压缩率，但编码更慢。
 
 ### Q: 如何验证转换结果
