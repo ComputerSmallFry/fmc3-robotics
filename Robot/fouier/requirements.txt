@@ -1,0 +1,2 @@
+fourier-aurora-client>=1.0.0
+numpy
