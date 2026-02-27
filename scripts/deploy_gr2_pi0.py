@@ -1,16 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-部署 ACT 策略到傅里叶 GR-2 机器人
+部署 PI0 策略到傅里叶 GR-2 机器人
 相机: Orbbec Gemini 335Lg (RGB via OpenCV, 深度零填充)
 
+PI0 特点:
+  - 基于 PaliGemma VLM (gemma_2b), 需要 language task 输入
+  - chunk_size=50, n_action_steps=50
+  - Flow Matching 多步 denoising (默认 10 步)
+  - state 会 pad 到 max_state_dim, action pad 到 max_action_dim
+
 用法:
-    python scripts/deploy_gr2_act.py \
-        --checkpoint outputs/train/fourier_gr2_act/checkpoints/last/pretrained_model \
+    python scripts/deploy_gr2_pi0.py \
+        --checkpoint outputs/train/fourier_gr2_pi0/checkpoints/last/pretrained_model \
         --domain-id 123 --robot-name gr2
 
-    # 调试模式 (不连接机器人)
-    python scripts/deploy_gr2_act.py \
-        --checkpoint outputs/train/fourier_gr2_act/checkpoints/last/pretrained_model \
+    # 指定任务描述
+    python scripts/deploy_gr2_pi0.py \
+        --checkpoint outputs/train/fourier_gr2_pi0/checkpoints/last/pretrained_model \
+        --task "grab the bottle on the table"
+
+    # 调试模式
+    python scripts/deploy_gr2_pi0.py \
+        --checkpoint outputs/train/fourier_gr2_pi0/checkpoints/last/pretrained_model \
         --dry-run
 """
 
@@ -29,7 +40,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger("deploy_gr2_act")
+logger = logging.getLogger("deploy_gr2_pi0")
 
 # =====================================================================
 # Action 35维 → GR2Robot 关节组映射
@@ -47,12 +58,13 @@ ACTION_SLICES = {
 BASE_VEL_SLICE = slice(29, 35)
 
 
-class GR2PolicyDeployer:
-    """将 LeRobot ACT 策略部署到傅里叶 GR-2 机器人"""
+class GR2PI0Deployer:
+    """将 LeRobot PI0 策略部署到傅里叶 GR-2 机器人"""
 
     def __init__(
         self,
         checkpoint_path: str,
+        task: str = "grab the bottle on the table",
         device: str = "cuda",
         domain_id: int = 123,
         robot_name: str = "gr2",
@@ -62,6 +74,7 @@ class GR2PolicyDeployer:
         enable_base: bool = False,
     ):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.task = task
         self.control_freq = control_freq
         self.dry_run = dry_run
         self.enable_base = enable_base
@@ -70,6 +83,7 @@ class GR2PolicyDeployer:
 
         logger.info(f"设备: {self.device}")
         logger.info(f"Checkpoint: {checkpoint_path}")
+        logger.info(f"任务描述: \"{self.task}\"")
 
         self._load_policy(checkpoint_path)
         self._load_processors(checkpoint_path)
@@ -82,13 +96,14 @@ class GR2PolicyDeployer:
             logger.info("[DRY RUN] 跳过机器人连接")
 
     def _load_policy(self, checkpoint_path: str):
-        from lerobot.policies.act.modeling_act import ACTPolicy
-        logger.info("正在加载 ACT 策略...")
-        self.policy = ACTPolicy.from_pretrained(checkpoint_path)
+        from lerobot.policies.pi0.modeling_pi0 import PI0Policy
+        logger.info("正在加载 PI0 策略 (可能需要较长时间)...")
+        self.policy = PI0Policy.from_pretrained(checkpoint_path)
         self.policy.to(self.device)
         self.policy.eval()
         logger.info(f"策略加载完成 (chunk_size={self.policy.config.chunk_size}, "
-                     f"n_action_steps={self.policy.config.n_action_steps})")
+                     f"n_action_steps={self.policy.config.n_action_steps}, "
+                     f"num_inference_steps={self.policy.config.num_inference_steps})")
 
     def _load_processors(self, checkpoint_path: str):
         from lerobot.policies.factory import make_pre_post_processors
@@ -123,14 +138,12 @@ class GR2PolicyDeployer:
         self.robot = GR2Robot(domain_id=domain_id, robot_name=robot_name)
         logger.info("机器人连接成功")
 
-    def get_camera_images(self) -> tuple[np.ndarray, np.ndarray]:
+    def get_camera_image(self) -> np.ndarray:
         if self.cap_rgb is not None:
             ret, frame = self.cap_rgb.read()
             if ret:
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                return rgb, np.zeros((480, 640, 3), dtype=np.uint8)
-        black = np.zeros((480, 640, 3), dtype=np.uint8)
-        return black, black
+                return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return np.zeros((480, 640, 3), dtype=np.uint8)
 
     def get_robot_state(self) -> np.ndarray:
         if self.dry_run:
@@ -172,16 +185,25 @@ class GR2PolicyDeployer:
         return state
 
     def build_observation(self) -> dict[str, torch.Tensor]:
+        """
+        构建 PI0 需要的 observation 字典
+        PI0 需要 "task" 字段作为 language 输入 (PaliGemma tokenizer)
+        """
         state = self.get_robot_state()
-        rgb, depth = self.get_camera_images()
-        return {
+        rgb = self.get_camera_image()
+
+        obs = {
             "observation.state": torch.from_numpy(state).float(),
             "observation.images.camera_top": torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0,
-            "observation.images.camera_top_depth": torch.from_numpy(depth).permute(2, 0, 1).float() / 255.0,
+            "task": self.task,
         }
+        return obs
 
     def action_to_robot_command(self, action: np.ndarray):
+        """将 35 维 action 发送到机器人 (action 可能被 pad 过, 只取前 35 维)"""
         # 数据集已通过 reorder_to_target() 排成 SDK 顺序，直接发送
+        action = action[:35]
+
         joint_targets = {}
         for group_name, s in ACTION_SLICES.items():
             joint_targets[group_name] = action[s].tolist()
@@ -212,7 +234,6 @@ class GR2PolicyDeployer:
         time.sleep(1.0)
         logger.info("已切换到上半身控制模式")
 
-        # 复位到训练数据的初始姿态
         input("按回车复位到初始姿态 (3秒平滑移动)...")
         init_pose = {
             "left_manipulator":  [0.012, 0.167, 0.051, -0.711, 0.054, -0.139, -0.006],
@@ -245,7 +266,17 @@ class GR2PolicyDeployer:
         self.policy.reset()
 
         logger.info(f"开始推理 (频率: {self.control_freq}Hz, 最大步数: {max_steps})")
+        logger.info(f"任务: \"{self.task}\"")
         logger.info("按 Ctrl+C 安全停止")
+
+        # 预热: 第一次推理会触发 JIT 编译, 会比较慢
+        logger.info("正在预热模型 (首次推理较慢)...")
+        obs = self.build_observation()
+        obs_processed = self.preprocessor(obs)
+        with torch.no_grad():
+            _ = self.policy.select_action(obs_processed)
+        self.policy.reset()  # 清空预热产生的 action queue
+        logger.info("预热完成")
 
         step = 0
         try:
@@ -262,7 +293,7 @@ class GR2PolicyDeployer:
                     action_tensor = self.policy.select_action(obs_processed)
 
                 action_tensor = self.postprocessor(action_tensor)
-                action = action_tensor.squeeze(0).numpy()
+                action = action_tensor.squeeze(0).cpu().numpy()
 
                 self.action_to_robot_command(action)
 
@@ -301,9 +332,11 @@ class GR2PolicyDeployer:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="部署 ACT 策略到傅里叶 GR-2")
+    parser = argparse.ArgumentParser(description="部署 PI0 策略到傅里叶 GR-2")
     parser.add_argument("--checkpoint", type=str,
-                        default="outputs/train/fourier_gr2_act/checkpoints/last/pretrained_model")
+                        default="outputs/train/fourier_gr2_pi0/checkpoints/last/pretrained_model")
+    parser.add_argument("--task", type=str, default="grab the bottle on the table",
+                        help="任务描述 (language prompt), 需与训练数据一致")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--domain-id", type=int, default=123)
     parser.add_argument("--robot-name", type=str, default="gr2")
@@ -314,8 +347,9 @@ def main():
     parser.add_argument("--enable-base", action="store_true")
     args = parser.parse_args()
 
-    deployer = GR2PolicyDeployer(
+    deployer = GR2PI0Deployer(
         checkpoint_path=args.checkpoint,
+        task=args.task,
         device=args.device,
         domain_id=args.domain_id,
         robot_name=args.robot_name,
