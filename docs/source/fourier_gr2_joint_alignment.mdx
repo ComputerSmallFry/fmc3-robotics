@@ -1,0 +1,366 @@
+# Fourier GR2 关节对齐文档：模型（URDF）↔ Aurora SDK
+
+本文档详细描述 Fourier GR2 机器人在**训练数据采集 → 模型训练 → 部署推理**全链路中，关节数据如何在 URDF 模型空间与 Aurora SDK 硬件空间之间对齐。
+
+**涉及文件：**
+
+| 文件 | 作用 |
+|------|------|
+| `scripts/deploy_gr2_pi0.py` | PI0 单视觉部署脚本（核心对齐逻辑所在） |
+| `scripts/deploy_gr2_pi0_multivis.py` | PI0 多视觉部署脚本（复用 base 对齐逻辑） |
+| `scripts/deploy_gr2_act.py` | ACT 策略部署脚本（同一套关节映射） |
+| `src/lerobot/utils/gr2_hand_conversion.py` | 手部 SDK ↔ URDF 坐标转换 |
+| `src/lerobot/scripts/lerobot_convert_fourier.py` | Fourier 数据集 → LeRobot v3.0 转换 |
+| `src/lerobot/robots/fourier_gr2/` | LeRobot GR2 机器人驱动 |
+
+---
+
+## 1. 全局数据流
+
+```text
+┌─────────────┐     hand_sdk_to_urdf()     ┌─────────────────┐     preprocessor      ┌──────────┐
+│  Aurora SDK  │  ──────────────────────>   │  45D URDF State  │  ──────────────────>  │          │
+│  (硬件空间)   │                            │  + RGB/Depth     │                       │  PI0     │
+│             │                            │  + task string   │                       │  模型    │
+│             │  <──────────────────────   │  35D URDF Action │  <──────────────────  │          │
+└─────────────┘     hand_urdf_to_sdk()     └─────────────────┘     postprocessor      └──────────┘
+                    + clip=True
+```
+
+**关键原则：模型全程只看到 URDF 空间的数据，SDK ↔ URDF 转换仅发生在硬件边界。**
+
+---
+
+## 2. 观测状态向量 `observation.state`（45D）
+
+45D = 29 关节位置 + 16 底盘/IMU 数据，按以下顺序拼接：
+
+### 2.1 关节部分（29D）
+
+| 索引 | 关节名 | 所属组 | 备注 |
+|------|--------|--------|------|
+| 0 | `left_shoulder_pitch_joint` | left_manipulator | |
+| 1 | `left_shoulder_roll_joint` | left_manipulator | |
+| 2 | `left_shoulder_yaw_joint` | left_manipulator | |
+| 3 | `left_elbow_pitch_joint` | left_manipulator | |
+| 4 | `left_wrist_yaw_joint` | left_manipulator | |
+| 5 | `left_wrist_pitch_joint` | left_manipulator | |
+| 6 | `left_wrist_roll_joint` | left_manipulator | |
+| 7 | `right_shoulder_pitch_joint` | right_manipulator | |
+| 8 | `right_shoulder_roll_joint` | right_manipulator | |
+| 9 | `right_shoulder_yaw_joint` | right_manipulator | |
+| 10 | `right_elbow_pitch_joint` | right_manipulator | |
+| 11 | `right_wrist_yaw_joint` | right_manipulator | |
+| 12 | `right_wrist_pitch_joint` | right_manipulator | |
+| 13 | `right_wrist_roll_joint` | right_manipulator | |
+| 14 | `L_index_proximal_joint` | left_hand | SDK→URDF 转换 |
+| 15 | `L_middle_proximal_joint` | left_hand | SDK→URDF 转换 |
+| 16 | `L_ring_proximal_joint` | left_hand | SDK→URDF 转换 |
+| 17 | `L_pinky_proximal_joint` | left_hand | SDK→URDF 转换 |
+| 18 | `L_thumb_proximal_pitch_joint` | left_hand | SDK→URDF 转换 |
+| 19 | `L_thumb_proximal_yaw_joint` | left_hand | SDK→URDF 转换 |
+| 20 | `R_index_proximal_joint` | right_hand | SDK→URDF 转换 |
+| 21 | `R_middle_proximal_joint` | right_hand | SDK→URDF 转换 |
+| 22 | `R_ring_proximal_joint` | right_hand | SDK→URDF 转换 |
+| 23 | `R_pinky_proximal_joint` | right_hand | SDK→URDF 转换 |
+| 24 | `R_thumb_proximal_pitch_joint` | right_hand | SDK→URDF 转换 |
+| 25 | `R_thumb_proximal_yaw_joint` | right_hand | SDK→URDF 转换 |
+| 26 | `head_yaw_joint` | head | |
+| 27 | `head_pitch_joint` | head | |
+| 28 | `waist_yaw_joint` | waist | |
+
+### 2.2 底盘与 IMU 部分（16D）
+
+| 索引 | 名称 | 维度 | 来源 |
+|------|------|------|------|
+| 29-31 | `base_pos (x, y, z)` | 3 | `client.get_base_data("pos_W")` |
+| 32-35 | `base_quat (x, y, z, w)` | 4 | `client.get_base_data("quat_xyzw")` |
+| 36-38 | `base_rpy (roll, pitch, yaw)` | 3 | `client.get_base_data("rpy")` |
+| 39-41 | `imu_acc (x, y, z)` | 3 | `client.get_base_data("acc_B")` |
+| 42-44 | `imu_omega (x, y, z)` | 3 | `client.get_base_data("omega_B")` |
+
+### 2.3 运行时拼接函数
+
+`get_robot_state_urdf(client)` 按固定顺序读取 Aurora SDK 数据并拼接：
+
+```python
+STATE_GROUP_ORDER = [
+    ("left_manipulator", "position"),   # 7D — 直接使用
+    ("right_manipulator", "position"),  # 7D — 直接使用
+    ("left_hand", "position"),          # 6D — hand_sdk_to_urdf() 转换后使用
+    ("right_hand", "position"),         # 6D — hand_sdk_to_urdf() 转换后使用
+    ("head", "position"),               # 2D — 直接使用
+    ("waist", "position"),              # 1D — 直接使用
+]
+# 随后拼接 16D 底盘/IMU 数据
+```
+
+---
+
+## 3. 动作向量 `action`（35D）
+
+### 3.1 关节控制部分（29D）
+
+与状态向量的前 29D 一一对应，模型输出的就是各关节的目标位置（弧度制）。
+
+| 切片 | 组名 | 维度 | 说明 |
+|------|------|------|------|
+| `[0:7]` | left_manipulator | 7 | 左臂 7 关节 |
+| `[7:14]` | right_manipulator | 7 | 右臂 7 关节 |
+| `[14:20]` | left_hand | 6 | 左手 6 自由度（URDF→SDK 转换后下发） |
+| `[20:26]` | right_hand | 6 | 右手 6 自由度（URDF→SDK 转换后下发） |
+| `[26:28]` | head | 2 | 头部偏航/俯仰 |
+| `[28:29]` | waist | 1 | 腰部偏航 |
+
+### 3.2 底盘速度部分（6D，可选）
+
+仅在 `--send-base` 启用时下发：
+
+| 切片 | 名称 | 说明 |
+|------|------|------|
+| `[29]` | `base_vel_x` | 前后平移速度 |
+| `[30]` | `base_vel_y` | 左右平移速度 |
+| `[31]` | `base_vel_yaw` | 偏航角速度 |
+| `[32]` | `base_vel_height` | 高度调节 |
+| `[33]` | `base_vel_pitch` | 俯仰调节 |
+| `[34]` | `base_base_yaw` | 底盘偏航附加 |
+
+### 3.3 动作下发函数
+
+`send_action_to_robot(client, action_urdf, send_base)` 的核心逻辑：
+
+```python
+# 1. 手部 URDF → SDK 转换（带安全裁剪）
+action_send[14:20] = hand_urdf_to_sdk(action_send[14:20], clip=True)
+action_send[20:26] = hand_urdf_to_sdk(action_send[20:26], clip=True)
+
+# 2. 按组名下发关节位置
+client.set_joint_positions({
+    "left_manipulator":  action[0:7],
+    "right_manipulator": action[7:14],
+    "left_hand":         action[14:20],   # 已转为 SDK 空间
+    "right_hand":        action[20:26],   # 已转为 SDK 空间
+    "head":              action[26:28],
+    "waist":             action[28:29],
+})
+
+# 3. 可选：下发底盘速度
+if send_base:
+    client.set_velocity(vel_x, vel_y, vel_yaw, height, pitch)
+```
+
+---
+
+## 4. 手部坐标转换详解
+
+转换代码位于 `src/lerobot/utils/gr2_hand_conversion.py`。
+
+### 4.1 常量
+
+```python
+DEX_FINGER_OFFSET      = 0.17    # 四指偏移量
+DEX_THUMB_PITCH_OFFSET = 0.12    # 拇指俯仰偏移量
+
+# SDK 空间值域限制
+DEX_HAND_SDK_MIN = [0.0,    0.0,    0.0,    0.0,    0.0, -inf]
+DEX_HAND_SDK_MAX = [1.9227, 1.9227, 1.9227, 1.9227, 1.5, +inf]
+```
+
+### 4.2 SDK → URDF（读取状态时）
+
+```text
+urdf[0] =  0.17 - sdk[0]       # 食指：偏移量 - SDK值
+urdf[1] =  0.17 - sdk[1]       # 中指
+urdf[2] =  0.17 - sdk[2]       # 无名指
+urdf[3] =  0.17 - sdk[3]       # 小指
+urdf[4] = sdk[4] - 0.12        # 拇指俯仰：SDK值 - 偏移量
+urdf[5] = -sdk[5]              # 拇指偏航：取反
+```
+
+**含义**：SDK 空间下四指 0 表示张开、值越大越握紧；URDF 空间下是相反的约定（正值=张开）。拇指偏航方向也相反。
+
+### 4.3 URDF → SDK（下发动作时）
+
+```text
+sdk[0] =  0.17 - urdf[0]       # 逆运算
+sdk[1] =  0.17 - urdf[1]
+sdk[2] =  0.17 - urdf[2]
+sdk[3] =  0.17 - urdf[3]
+sdk[4] =  0.12 + urdf[4]
+sdk[5] = -urdf[5]
+
+# clip=True 时额外裁剪到 SDK 安全范围
+sdk = clip(sdk, DEX_HAND_SDK_MIN, DEX_HAND_SDK_MAX)
+```
+
+### 4.4 转换发生的位置
+
+| 场景 | 方向 | 调用位置 |
+|------|------|----------|
+| 读取机器人状态 | SDK → URDF | `get_robot_state_urdf()` 内部 |
+| 下发动作指令 | URDF → SDK | `send_action_to_robot()` 内部 |
+| 数据集采集 | SDK → URDF | `FourierGR2.get_observation()` 内部 |
+| LeRobot 机器人驱动 | URDF → SDK | `FourierGR2.send_action()` 内部 |
+
+---
+
+## 5. 非手部关节安全限位
+
+`clamp_non_hand_joint_action()` 在 URDF 空间对非手部关节执行硬裁剪：
+
+### 5.1 左臂（7 关节）
+
+| 索引 | 关节 | 下限 (rad) | 上限 (rad) |
+|------|------|-----------|-----------|
+| 0 | shoulder_pitch | -2.9671 | +2.9671 |
+| 1 | shoulder_roll | -0.5236 | +2.7925 |
+| 2 | shoulder_yaw | -1.8326 | +1.8326 |
+| 3 | elbow_pitch | -1.5272 | +0.4800 |
+| 4 | wrist_yaw | -1.8326 | +1.8326 |
+| 5 | wrist_pitch | -0.6109 | +0.6109 |
+| 6 | wrist_roll | -0.9599 | +0.9599 |
+
+### 5.2 右臂（7 关节）
+
+与左臂相同，**除了 shoulder_roll 限位镜像**：
+
+| 索引 | 关节 | 下限 (rad) | 上限 (rad) |
+|------|------|-----------|-----------|
+| 7 | shoulder_pitch | -2.9671 | +2.9671 |
+| 8 | shoulder_roll | **-2.7925** | **+0.5236** |
+| 9-13 | 其余 5 关节 | 同左臂 | 同左臂 |
+
+### 5.3 头部 + 腰部
+
+| 索引 | 关节 | 下限 (rad) | 上限 (rad) |
+|------|------|-----------|-----------|
+| 26 | head_yaw | -1.3963 | +1.3963 |
+| 27 | head_pitch | -0.5236 | +0.5236 |
+| 28 | waist_yaw | -2.6180 | +2.6180 |
+
+> 注意：手部关节 `[14:26]` **不在此处裁剪**，而是在 `hand_urdf_to_sdk(clip=True)` 时裁剪到 SDK 安全范围。
+
+---
+
+## 6. 动作平滑与稳定化
+
+`stabilize_action()` 在 URDF 空间对动作做两层平滑处理，减少机器人抖动：
+
+### 6.1 EMA 指数移动平均
+
+```python
+action = prev_action * (1 - alpha) + current_action * alpha
+```
+
+- 参数：`--action-ema-alpha`（默认 1.0 = 不平滑）
+- alpha 越小，动作越平滑但响应越慢
+
+### 6.2 步间变化量限制（Rate Limiting）
+
+| 关节组 | 切片 | 参数 | 默认最大步间变化 (rad) |
+|--------|------|------|----------------------|
+| 双臂 | `[0:14]` | `--max-arm-delta` | 0.06 |
+| 双手 | `[14:26]` | `--max-hand-delta` | 0.12 |
+| 头/腰 | `[26:29]` | `--max-head-waist-delta` | 0.08 |
+| 底盘 | `[29:35]` | `--max-base-delta` | 0.15 |
+
+```python
+delta = clip(current - prev, -max_delta, +max_delta)
+output = prev + delta
+```
+
+### 6.3 首帧平滑过渡
+
+`smooth_transition()` 在部署启动时将机器人从当前位姿**线性插值**到第一个目标动作：
+
+```python
+for step in range(total_steps):
+    alpha = step / total_steps
+    interp = current_joints * (1 - alpha) + target_joints * alpha
+    send_action_to_robot(client, interp)
+    sleep(1.0 / frequency_hz)
+```
+
+- 参数：`--transition-time-s`（默认持续时间）、`--transition-freq`（插值频率 Hz）
+- 过渡完成后会 `policy.reset()` 清除 action chunk 缓存
+
+---
+
+## 7. 完整部署循环对齐总结
+
+每个控制步的数据流：
+
+```text
+Step 1: camera.read()
+        → rgb (H,W,3 uint8)
+        → depth_rgb (H,W,3 uint8)
+
+Step 2: get_robot_state_urdf(client)
+        → Aurora SDK 读取各组关节位置
+        → 手部经过 hand_sdk_to_urdf() 转换
+        → 拼接底盘/IMU 数据
+        → 输出 45D float32 URDF 状态向量
+
+Step 3: fit_vector(state_full, state_dim)
+        → 截断或零填充到模型期望维度
+
+Step 4: 构建 observation dict
+        → {visual_key: rgb/depth, state_key: state_model}
+
+Step 5: preprocessor → policy.select_action() → postprocessor
+        → 输出 action tensor (可能是 action chunk)
+        → 取第 0 步动作，fit_vector 到 action_dim
+
+Step 6: fit_vector(action_model, 35)
+        → 适配到 GR2 的 35D URDF 动作空间
+
+Step 7: clamp_non_hand_joint_action()
+        → 非手部关节裁剪到安全限位
+
+Step 8: stabilize_action()
+        → EMA 平滑 + 步间变化量限制
+
+Step 9: send_action_to_robot()
+        → 手部经过 hand_urdf_to_sdk(clip=True) 转换
+        → 按组名下发到 Aurora SDK
+        → 可选下发底盘速度
+```
+
+---
+
+## 8. 训练数据 ↔ 部署一致性检查清单
+
+部署前务必确认以下各项：
+
+| 检查项 | 如何验证 |
+|--------|----------|
+| 状态维度一致 | 日志输出 `state_dim=45`，数据集 `meta/info.json` 中 `observation.state` shape 为 `[45]` |
+| 动作维度一致 | 日志输出 `action_dim=35`，数据集 `action` shape 为 `[35]` |
+| 手部转换激活 | 状态读取路径有 `hand_sdk_to_urdf`，下发路径有 `hand_urdf_to_sdk(clip=True)` |
+| 关节顺序一致 | 数据集中关节名顺序与 `STATE_GROUP_ORDER` / `ACTION_GROUP_SLICES` 定义一致 |
+| 视觉键匹配 | 日志中 `visual_keys` 与数据集 `observation.images.*` 键名完全一致 |
+| 深度图编码一致 | 部署时的 `depth_rgb` 编码方式（伪彩色/灰度复制）与训练数据集中深度图编码一致 |
+| FPS 匹配 | 部署 `--fps` 与训练数据集采集 FPS 接近（通常 30Hz） |
+
+### 运动抖动排查
+
+如果部署后机器人运动抖动：
+
+1. **降低 EMA alpha**：`--action-ema-alpha 0.7`（默认 1.0）
+2. **收紧步间限制**：`--max-arm-delta 0.03`（默认 0.06）
+3. **降低帧率**：`--fps 15`（如果推理延迟超过 33ms）
+4. **检查日志** `arm_delta` 值：正常运行时应 < 0.5，持续 > 1.0 说明对齐有问题
+
+---
+
+## 9. ACT 与 PI0 部署差异
+
+| 特性 | PI0 (`deploy_gr2_pi0.py`) | ACT (`deploy_gr2_act.py`) |
+|------|--------------------------|--------------------------|
+| EMA 平滑 | 支持（`--action-ema-alpha`） | 不支持 |
+| 步间 Rate Limiting | 支持（分组独立阈值） | 不支持 |
+| 首帧平滑过渡 | 支持（线性插值） | 支持（线性插值） |
+| 右手抓取耦合 | 不支持 | 支持（拇指驱动四指联动） |
+| 多视觉输入 | 支持（multivis 版本） | 不支持 |
+| 关节映射 | 相同 | 相同 |
+| 手部转换 | 相同 | 相同 |
