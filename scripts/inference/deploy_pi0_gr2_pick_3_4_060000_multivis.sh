@@ -7,10 +7,10 @@ CHECKPOINT_PATH="/home/phl/workspace/lerobot-versions/lerobot/outputs/train/pi0_
 TASK="pick bottle and place into box"
 ROBOT_TYPE="fourier_gr2"
 
-FPS="${FPS:-30}"
+FPS="15"
 DOMAIN_ID="${DOMAIN_ID:-123}"
 ROBOT_NAME="${ROBOT_NAME:-gr2}"
-FSM_STATE="${FSM_STATE:-11}"
+FSM_STATE="11"
 ENABLE_GUI="${ENABLE_GUI:-0}"
 SAVE_DIR="${SAVE_DIR:-${ROOT_DIR}/scripts/outputs/deploy_gr2_pi0_multivis}"
 SAVE_EVERY="${SAVE_EVERY:-30}"
@@ -37,7 +37,7 @@ if [[ "${ENABLE_GUI}" != "1" ]]; then
 fi
 
 set -x
-conda run --no-capture-output -n "${CONDA_ENV}" python scripts/deploy_gr2_pi0_multivis.py \
+conda run --no-capture-output -n "${CONDA_ENV}" python scripts/deploy_gr2_pi0_rgbd.py \
   --checkpoint-path "${CHECKPOINT_PATH}" \
   --task "${TASK}" \
   --robot-type "${ROBOT_TYPE}" \
