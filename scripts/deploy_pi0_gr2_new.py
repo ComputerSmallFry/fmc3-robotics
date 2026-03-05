@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # ==================== 配置参数 ====================
 
-HF_MODEL_ID = "/home/phl/workspace/mymodels/pick_bottle/pi0_gr2/checkpoints/last/pretrained_model"
+HF_MODEL_ID = "/home/phl/workspace/mymodels/pick_bottle/pi0_gr2/checkpoints/085000/pretrained_model"
 HF_DATASET_ID = "/home/phl/workspace/dataset/fourier/pick_bottle_and_place_into_box_lerobot_gr2"
 
 # 摄像头配置 (使用你提供的稳健配置)

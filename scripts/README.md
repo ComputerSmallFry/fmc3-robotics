@@ -50,3 +50,7 @@ bash scripts/train_pi0_grab_box.sh
 **训练输出:** `/root/output_lerobot_train/grab_box/pi0_fmc3`
 
 **WandB 看板:** 项目名 `Lerobot_Zihao_Project`
+
+启动
+FSM_STATE=11 bash scripts/inference/deploy_pi0_gr2_pick_3_4_060000_multivis.sh
+

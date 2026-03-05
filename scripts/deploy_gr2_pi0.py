@@ -14,6 +14,7 @@ import argparse
 import importlib
 import json
 import logging
+import math
 import os
 import signal
 import time
@@ -34,7 +35,7 @@ WINDOW_NAME = "GR2 PI0 Deploy | RGB + Depth (q/ESC quit, s save)"
 _RECEIVED_STOP_SIGNAL = False
 DEFAULT_CHECKPOINT_PATH = (
     "/home/phl/workspace/lerobot-versions/lerobot/outputs/train/"
-    "pi0_gr2_pick_20260303_230510/checkpoints/last"
+    "pi0_gr2_pick_20260303_230510/checkpoints/085000"
 )
 DEFAULT_TASK = "pick bottle"
 DEFAULT_ROBOT_TYPE = "fourier_gr2"
@@ -93,6 +94,21 @@ JOINT_LIMITS = {
     "head": [(-1.3963, 1.3963), (-0.5236, 0.5236)],
     "waist": [(-2.618, 2.618)],
 }
+
+FSM_STATE_NAME_HINTS = {
+    0: "Default",
+    1: "JointStand",
+    2: "PdStand",
+    10: "UserCmd",
+    11: "UpperBodyUserCmd",
+}
+
+
+def _fsm_state_matches(observed: str, expected: str) -> bool:
+    if not observed:
+        return False
+    obs = str(observed)
+    return obs == expected or obs.endswith(f".{expected}")
 
 
 def check_opencv_gui_available() -> None:
@@ -716,8 +732,48 @@ def setup_robot_if_needed(args: argparse.Namespace) -> Any | None:
     if not args.skip_confirm:
         LOGGER.info("Waiting for manual confirmation. Press Enter in terminal to continue.")
         input("确认机器人和周围环境安全后按回车，脚本将切换 FSM 并开始推理...")
-    client.set_fsm_state(args.fsm_state)
-    time.sleep(1.0)
+    expected_state_name = FSM_STATE_NAME_HINTS.get(int(args.fsm_state))
+    fsm_state = "Unknown"
+    upper_fsm_state = "Unknown"
+    for attempt in range(1, 7):
+        client.set_fsm_state(args.fsm_state)
+        time.sleep(0.5)
+        try:
+            fsm_state = client.get_fsm_state()
+            upper_fsm_state = client.get_upper_fsm_state()
+        except Exception as exc:
+            LOGGER.warning("Failed to query Aurora FSM after switch attempt %d: %s", attempt, exc)
+            continue
+        if expected_state_name is None or _fsm_state_matches(fsm_state, expected_state_name):
+            break
+
+    try:
+        LOGGER.info("Aurora FSM after switch: whole=%s upper=%s", fsm_state, upper_fsm_state)
+        if expected_state_name is not None and not _fsm_state_matches(fsm_state, expected_state_name):
+            raise RuntimeError(
+                "FSM switch failed: expected "
+                f"{expected_state_name}(id={args.fsm_state}) but got {fsm_state}. "
+                "请先确认手柄/急停/控制权限状态，再重试；上身控制可优先尝试 --fsm-state 11。"
+            )
+        if int(args.fsm_state) == 2:
+            stand_pose = client.get_stand_pose()
+            if isinstance(stand_pose, (list, tuple)) and len(stand_pose) >= 4:
+                dz = float(stand_pose[0])
+                dp = float(stand_pose[1])
+                dy = float(stand_pose[2])
+                stable_level = int(stand_pose[3])
+                LOGGER.info(
+                    "PdStand pose: delta_z=%.4f delta_pitch=%.4f delta_yaw=%.4f stable_level=%d",
+                    dz,
+                    dp,
+                    dy,
+                    stable_level,
+                )
+                if not all(math.isfinite(v) for v in [dz, dp, dy]):
+                    LOGGER.warning("PdStand pose contains non-finite values, DDS state stream may be abnormal.")
+    except Exception as exc:
+        LOGGER.warning("Failed to query Aurora FSM/stand state after switch: %s", exc)
+        raise
     return client
 
 
