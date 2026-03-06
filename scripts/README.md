@@ -52,5 +52,22 @@ bash scripts/train_pi0_grab_box.sh
 **WandB 看板:** 项目名 `Lerobot_Zihao_Project`
 
 启动
-FSM_STATE=11 bash scripts/inference/deploy_pi0_gr2_pick_3_4_060000_multivis.sh
 
+## GR2 PI0 推理服务（RoboOS 对接）
+
+新增脚本：`scripts/gr2_pi0_inference_service.py`
+
+启动示例：
+
+```bash
+conda run --no-capture-output -n lerobot-pi0 \
+  python scripts/gr2_pi0_inference_service.py \
+  --unix-socket-path /tmp/gr2_pi0_inference_service.sock \
+  --checkpoint-path /home/phl/workspace/lerobot-versions/lerobot/outputs/train/pi0_gr2_pick_3_4_20260304_172720/checkpoints/111000/pretrained_model \
+  --robot-name gr2 \
+  --domain-id 123
+```
+
+通信方式：
+- Unix Domain Socket（进程间通信）
+- 默认 socket: `/tmp/gr2_pi0_inference_service.sock`
