@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="/home/phl/workspace/lerobot-versions/lerobot"
 CONDA_ENV="lerobot-pi0"
-CHECKPOINT_PATH="/home/phl/workspace/lerobot-versions/lerobot/outputs/train/pi0_gr2_pick_3_4_20260304_172720/checkpoints/060000/pretrained_model"
+CHECKPOINT_PATH="/home/phl/workspace/lerobot-versions/lerobot/outputs/train/pi0_gr2_pick_3_4_20260304_172720/checkpoints/111000/pretrained_model"
 TASK="pick bottle and place into box"
 ROBOT_TYPE="fourier_gr2"
 
@@ -17,9 +17,10 @@ SAVE_EVERY="${SAVE_EVERY:-30}"
 CLIENT_INIT_RETRIES="${CLIENT_INIT_RETRIES:-10}"
 CLIENT_RETRY_INTERVAL_S="${CLIENT_RETRY_INTERVAL_S:-2.0}"
 MAX_STEPS="${MAX_STEPS:-0}"
-ACTION_EMA_ALPHA="${ACTION_EMA_ALPHA:-0.35}"
-MAX_ARM_DELTA="${MAX_ARM_DELTA:-0.06}"
-MAX_HAND_DELTA="${MAX_HAND_DELTA:-0.12}"
+ACTION_EMA_ALPHA="${ACTION_EMA_ALPHA:-0.6}"
+HAND_EMA_ALPHA="${HAND_EMA_ALPHA:-0.95}"
+MAX_ARM_DELTA="${MAX_ARM_DELTA:-0.10}"
+MAX_HAND_DELTA="${MAX_HAND_DELTA:-0.20}"
 MAX_HEAD_WAIST_DELTA="${MAX_HEAD_WAIST_DELTA:-0.08}"
 MAX_BASE_DELTA="${MAX_BASE_DELTA:-0.15}"
 SLOW_LOOP_WARN_MS="${SLOW_LOOP_WARN_MS:-120}"
@@ -49,6 +50,7 @@ conda run --no-capture-output -n "${CONDA_ENV}" python scripts/deploy_gr2_pi0_rg
   --client-init-retries "${CLIENT_INIT_RETRIES}" \
   --client-retry-interval-s "${CLIENT_RETRY_INTERVAL_S}" \
   --action-ema-alpha "${ACTION_EMA_ALPHA}" \
+  --hand-ema-alpha "${HAND_EMA_ALPHA}" \
   --max-arm-delta "${MAX_ARM_DELTA}" \
   --max-hand-delta "${MAX_HAND_DELTA}" \
   --max-head-waist-delta "${MAX_HEAD_WAIST_DELTA}" \

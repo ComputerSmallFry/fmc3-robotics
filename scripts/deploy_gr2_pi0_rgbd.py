@@ -403,7 +403,9 @@ def run(args) -> None:
             # --- Step 4: 动作后处理 ---
             # 将模型输出的动作向量适配到 GR2 的 35D URDF 动作空间
             # （0:7 左臂, 7:14 右臂, 14:20 左手, 20:26 右手, 26:28 头, 28:29 腰, 29:35 底盘）
-            action_urdf = base.fit_vector(action_model, 35)
+            raw_action_urdf = base.fit_vector(action_model, 35)
+            prev_action_for_diag = prev_action_urdf
+            action_urdf = raw_action_urdf.copy()
             if not args.disable_clamp:
                 # 夹紧非手部关节的动作值到安全范围，防止机器人超出关节限位
                 action_urdf = base.clamp_non_hand_joint_action(action_urdf)
@@ -425,8 +427,6 @@ def run(args) -> None:
                     # 正常帧：直接下发动作
                     base.send_action_to_robot(client, action_urdf, args.send_base)
                     first_action = False
-            # 记录本帧动作供下一帧平滑使用
-            prev_action_urdf = action_urdf.copy()
 
             # --- Step 6: 日志记录 ---
             if step % max(1, args.log_every) == 0:
@@ -436,13 +436,18 @@ def run(args) -> None:
                 # 提取有效深度范围（排除零值/无效像素）
                 valid_depth = depth_u16[depth_u16 > 0]
                 depth_range = "empty" if valid_depth.size == 0 else f"{int(valid_depth.min())}..{int(valid_depth.max())}"
-                LOGGER.info(
-                    "step=%d arm_delta=%.4f depth(mm)=%s action_head=%s",
+                base.log_action_diagnostics(
                     step,
                     arm_delta,
                     depth_range,
-                    np.round(action_urdf[:8], 4).tolist(),
+                    raw_action_urdf,
+                    action_urdf,
+                    prev_action_for_diag,
+                    args,
                 )
+
+            # 记录本帧动作供下一帧平滑使用
+            prev_action_urdf = action_urdf.copy()
 
             # --- Step 7: 可视化与快照 ---
             if gui_enabled:

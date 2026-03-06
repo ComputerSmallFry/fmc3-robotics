@@ -103,6 +103,11 @@ FSM_STATE_NAME_HINTS = {
     11: "UpperBodyUserCmd",
 }
 
+LIFT_DIAGNOSTIC_JOINTS = (0, 1, 2, 3, 7, 8, 9, 10)
+_MISSING_STATE_COUNTS: dict[str, int] = {}
+_MISSING_STATE_LAST_LOG_TS = 0.0
+_MISSING_STATE_LOG_INTERVAL_S = 2.0
+
 
 def _fsm_state_matches(observed: str, expected: str) -> bool:
     if not observed:
@@ -421,6 +426,18 @@ def parse_args() -> argparse.Namespace:
         help="EMA blend factor for action smoothing in [0,1]. 1.0 disables EMA blending.",
     )
     parser.add_argument(
+        "--arm-ema-alpha",
+        type=float,
+        default=-1.0,
+        help="EMA alpha for arm joints. Negative means using --action-ema-alpha.",
+    )
+    parser.add_argument(
+        "--hand-ema-alpha",
+        type=float,
+        default=-1.0,
+        help="EMA alpha for hand joints. Negative means using --action-ema-alpha.",
+    )
+    parser.add_argument(
         "--max-arm-delta",
         type=float,
         default=0.06,
@@ -603,10 +620,20 @@ def stabilize_action(action_urdf: np.ndarray, prev_action_urdf: np.ndarray, args
     if action_urdf.shape != prev_action_urdf.shape:
         return action_urdf
 
-    alpha = float(np.clip(args.action_ema_alpha, 0.0, 1.0))
     out = action_urdf.copy()
-    if alpha < 1.0:
-        out = prev_action_urdf * (1.0 - alpha) + out * alpha
+
+    default_alpha = float(np.clip(args.action_ema_alpha, 0.0, 1.0))
+    arm_alpha = default_alpha if float(args.arm_ema_alpha) < 0 else float(np.clip(args.arm_ema_alpha, 0.0, 1.0))
+    hand_alpha = default_alpha if float(args.hand_ema_alpha) < 0 else float(np.clip(args.hand_ema_alpha, 0.0, 1.0))
+
+    if arm_alpha < 1.0:
+        out[0:14] = prev_action_urdf[0:14] * (1.0 - arm_alpha) + out[0:14] * arm_alpha
+    if hand_alpha < 1.0:
+        out[14:26] = prev_action_urdf[14:26] * (1.0 - hand_alpha) + out[14:26] * hand_alpha
+    if default_alpha < 1.0:
+        out[26:29] = prev_action_urdf[26:29] * (1.0 - default_alpha) + out[26:29] * default_alpha
+        if args.send_base:
+            out[29:35] = prev_action_urdf[29:35] * (1.0 - default_alpha) + out[29:35] * default_alpha
 
     _clip_delta_inplace(out, prev_action_urdf, slice(0, 14), float(args.max_arm_delta))
     _clip_delta_inplace(out, prev_action_urdf, slice(14, 26), float(args.max_hand_delta))
@@ -616,8 +643,19 @@ def stabilize_action(action_urdf: np.ndarray, prev_action_urdf: np.ndarray, args
     return out.astype(np.float32)
 
 
-def _safe_array(values: list[float] | None, dim: int) -> np.ndarray:
+def _note_missing_state(source: str, dim: int) -> None:
+    global _MISSING_STATE_LAST_LOG_TS
+    _MISSING_STATE_COUNTS[source] = _MISSING_STATE_COUNTS.get(source, 0) + 1
+    now = time.time()
+    if now - _MISSING_STATE_LAST_LOG_TS >= _MISSING_STATE_LOG_INTERVAL_S:
+        details = ", ".join(f"{key}:{count}" for key, count in sorted(_MISSING_STATE_COUNTS.items()))
+        LOGGER.warning("Missing robot state fallback to zeros (dim=%d). counts=%s", dim, details)
+        _MISSING_STATE_LAST_LOG_TS = now
+
+
+def _safe_array(values: list[float] | None, dim: int, source: str) -> np.ndarray:
     if values is None:
+        _note_missing_state(source, dim)
         return np.zeros(dim, dtype=np.float32)
     return fit_vector(np.asarray(values, dtype=np.float32), dim)
 
@@ -625,15 +663,88 @@ def _safe_array(values: list[float] | None, dim: int) -> np.ndarray:
 def get_robot_state_urdf(client: Any) -> np.ndarray:
     parts = []
     for group_name, key in STATE_GROUP_ORDER:
-        pos_array = _safe_array(client.get_group_state(group_name, key), GROUP_DIMS[group_name])
+        pos_array = _safe_array(
+            client.get_group_state(group_name, key),
+            GROUP_DIMS[group_name],
+            source=f"{group_name}.{key}",
+        )
         if "hand" in group_name and pos_array.shape[0] == 6:
             pos_array = hand_sdk_to_urdf(pos_array)
         parts.append(pos_array)
 
     for data_key, dim in STATE_BASE_DATA_ORDER:
-        parts.append(_safe_array(client.get_base_data(data_key), dim))
+        parts.append(_safe_array(client.get_base_data(data_key), dim, source=f"base.{data_key}"))
 
     return np.concatenate(parts).astype(np.float32)
+
+
+def _compute_arm_limit_stats(
+    raw_action_urdf: np.ndarray,
+    prev_action_urdf: np.ndarray | None,
+    args: argparse.Namespace,
+) -> tuple[float, float]:
+    if prev_action_urdf is None:
+        return 0.0, 0.0
+
+    max_delta = float(args.max_arm_delta)
+    if max_delta <= 0:
+        return 0.0, 0.0
+
+    alpha = (
+        float(np.clip(args.action_ema_alpha, 0.0, 1.0))
+        if float(args.arm_ema_alpha) < 0
+        else float(np.clip(args.arm_ema_alpha, 0.0, 1.0))
+    )
+    raw_arm = raw_action_urdf[:14]
+    prev_arm = prev_action_urdf[:14]
+    ema_arm = prev_arm * (1.0 - alpha) + raw_arm * alpha if alpha < 1.0 else raw_arm
+    delta = ema_arm - prev_arm
+
+    hit_mask = np.abs(delta) > max_delta
+    hit_ratio = float(hit_mask.mean())
+    if hit_mask.any():
+        max_cut = float(np.max(np.abs(delta[hit_mask]) - max_delta))
+    else:
+        max_cut = 0.0
+    return hit_ratio, max_cut
+
+
+def _format_key_joint_transitions(raw_action_urdf: np.ndarray, final_action_urdf: np.ndarray) -> str:
+    parts = []
+    for idx in LIFT_DIAGNOSTIC_JOINTS:
+        raw_v = float(raw_action_urdf[idx])
+        final_v = float(final_action_urdf[idx])
+        parts.append(f"{idx}:{raw_v:.3f}->{final_v:.3f}({final_v - raw_v:+.3f})")
+    return " ".join(parts)
+
+
+def log_action_diagnostics(
+    step: int,
+    arm_delta: float,
+    depth_range: str,
+    raw_action_urdf: np.ndarray,
+    final_action_urdf: np.ndarray,
+    prev_action_urdf: np.ndarray | None,
+    args: argparse.Namespace,
+) -> None:
+    arm_raw = raw_action_urdf[:14]
+    arm_final = final_action_urdf[:14]
+    arm_raw_norm = float(np.linalg.norm(arm_raw))
+    compress_ratio = float(np.linalg.norm(arm_raw - arm_final) / max(arm_raw_norm, 1e-6))
+    hit_ratio, max_cut = _compute_arm_limit_stats(raw_action_urdf, prev_action_urdf, args)
+    LOGGER.info(
+        "step=%d arm_delta=%.4f depth(mm)=%s raw_head=%s final_head=%s arm_compress=%.4f arm_limit_hit=%.2f "
+        "arm_limit_max_cut=%.4f lift(raw->final)=%s",
+        step,
+        arm_delta,
+        depth_range,
+        np.round(raw_action_urdf[:8], 4).tolist(),
+        np.round(final_action_urdf[:8], 4).tolist(),
+        compress_ratio,
+        hit_ratio,
+        max_cut,
+        _format_key_joint_transitions(raw_action_urdf, final_action_urdf),
+    )
 
 
 def _try_send_base_velocity(client: Any, action_urdf: np.ndarray) -> None:
@@ -1039,7 +1150,9 @@ def run(args: argparse.Namespace) -> None:
                 state_model=state_model,
                 action_dim=action_dim,
             )
-            action_urdf = fit_vector(action_model, 35)
+            raw_action_urdf = fit_vector(action_model, 35)
+            prev_action_for_diag = prev_action_urdf
+            action_urdf = raw_action_urdf.copy()
             if not args.disable_clamp:
                 action_urdf = clamp_non_hand_joint_action(action_urdf)
             if prev_action_urdf is not None:
@@ -1055,20 +1168,23 @@ def run(args: argparse.Namespace) -> None:
                 else:
                     send_action_to_robot(client, action_urdf, args.send_base)
                     first_action = False
-            prev_action_urdf = action_urdf.copy()
 
             if step % max(1, args.log_every) == 0:
                 arm_dim = min(14, state_full.shape[0], action_urdf.shape[0])
                 arm_delta = float(np.linalg.norm(action_urdf[:arm_dim] - state_full[:arm_dim]))
                 valid_depth = depth_u16[depth_u16 > 0]
                 depth_range = "empty" if valid_depth.size == 0 else f"{int(valid_depth.min())}..{int(valid_depth.max())}"
-                LOGGER.info(
-                    "step=%d arm_delta=%.4f depth(mm)=%s action_head=%s",
+                log_action_diagnostics(
                     step,
                     arm_delta,
                     depth_range,
-                    np.round(action_urdf[:8], 4).tolist(),
+                    raw_action_urdf,
+                    action_urdf,
+                    prev_action_for_diag,
+                    args,
                 )
+
+            prev_action_urdf = action_urdf.copy()
 
             if gui_enabled:
                 should_quit, last_vis_ts = render_gui_frame(
