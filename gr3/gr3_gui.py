@@ -317,7 +317,7 @@ class GR3GUI:
         scrollbar.pack(side="right", fill="y")
         
         # 参数变量
-        self.docker_var = tk.StringVar(value="docker.fftaicorp.com/farts/farther:onekey-260210074224-9956bc21")
+        self.docker_var = tk.StringVar(value="docker.fftaicorp.com/farts/farther:onekey-260310114304-c55c76c9")
         self.tag_var = tk.StringVar(value="")
         
         # 预设的graph选项
@@ -330,6 +330,9 @@ class GR3GUI:
             "daq_t5d_opencv.yml",
             "exo-debug.yml",
             "daq_t5d_orbbec.yml",
+            "quest_t5d_orbbec.yml",
+            "quest_t5d_multicam.yml",
+            "daq_t5d_multicam.yml",
         ]
         self.graph_var = tk.StringVar(value=self.graph_options[0])
         
