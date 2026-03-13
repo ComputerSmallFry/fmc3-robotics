@@ -1,2 +1,0 @@
-# python inference.py --serve --host 0.0.0.0 --port 4567 --model-id ~/workspace/models/RoboBrain2.0-7B
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python inference.py --serve --host 0.0.0.0 --port 4567 --model-id ~/workspace/models/RoboBrain2.0-3B
