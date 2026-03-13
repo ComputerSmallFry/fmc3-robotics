@@ -2,6 +2,8 @@
 pick_bottle_and_place_into_box/
 *_lerobot/
 *_lerobot_*/
+gr2/
+rab/
 
 # Python
 __pycache__/

@@ -1,133 +1,126 @@
-# Fourier Dora-Record → LeRobot v3.0 数据集转换工具
+# Fourier Dora-Record -> LeRobot v3.0 转换说明
 
-将 Fourier 人形机器人（GR-2/GR-3）外骨骼遥操采集的 Dora-Record 格式数据转换为 [LeRobot v3.0](https://github.com/huggingface/lerobot) 格式，用于策略模型训练（ACT、Diffusion、PI0、SmolVLA 等）。
+本仓库用于把 Fourier 机器人遥操作采集的 Dora-Record 数据，转换成 LeRobot v3.0 训练格式（PI0/ACT/Diffusion/SmolVLA 等可直接读取）。
 
-## 快速开始
+## Dora 原始格式（输入）
+
+### 目录结构
+
+```text
+pick_bottle_and_place_into_box/
+├── <session_id_1>/
+│   ├── episode_000000000/
+│   │   ├── metadata.json
+│   │   ├── action.parquet
+│   │   ├── action.base.parquet
+│   │   ├── observation.state.parquet
+│   │   ├── observation.base_state.parquet
+│   │   ├── observation.images.camera_top.parquet
+│   │   └── observation.images.camera_top_depth.parquet
+│   └── episode_000000001/
+└── <session_id_2>/
+    └── episode_...
+```
+
+### 各 parquet 的语义
+
+| 文件 | 关键列 | 形状/维度 | 频率（约） | 说明 |
+|---|---|---:|---:|---|
+| `action.parquet` | `action` | 31D | 100Hz | 关节动作（`list<struct<name,value>>`） |
+| `action.base.parquet` | `action.base` | 6D | 100Hz | 底盘动作（`vel_x/vel_y/vel_yaw/vel_height/vel_pitch/base_yaw`） |
+| `observation.state.parquet` | `observation.state` | 29D | 60Hz | 关节状态（`list<struct<name,value>>`） |
+| `observation.base_state.parquet` | `observation.base_state` | 16D（展开后） | 60Hz | 底盘位姿 + IMU 嵌套结构 |
+| `observation.images.camera_top.parquet` | `observation.images.camera_top` | JPEG 字节流 | 30Hz | RGB 图像 |
+| `observation.images.camera_top_depth.parquet` | `observation.images.camera_top_depth` | PNG 字节流 | 30Hz | 深度图像 |
+
+> 公共时间列为 `timestamp_utc`（纳秒时间戳），转换时用它做跨模态对齐。
+
+## LeRobot 格式（输出）
+
+### 目录结构
+
+```text
+<dataset_name>/
+├── meta/
+│   ├── info.json
+│   ├── stats.json
+│   ├── tasks.parquet
+│   └── episodes/chunk-000/file-000.parquet
+├── data/chunk-000/file-000.parquet
+└── videos/
+    ├── observation.images.camera_top/chunk-000/file-*.mp4
+    └── observation.images.camera_top_depth/chunk-000/file-*.mp4
+```
+
+### 帧级数据（`data/chunk-000/file-000.parquet`）
+
+| 列名 | 类型 | 含义 |
+|---|---|---|
+| `action` | `list<float64>` | 模型监督动作向量 |
+| `observation.state` | `list<float64>` | 模型状态输入向量 |
+| `timestamp` | `float64` | episode 内时间（秒） |
+| `frame_index` | `int64` | episode 内帧号 |
+| `episode_index` | `int64` | episode 编号 |
+| `index` | `int64` | 全局帧号 |
+| `task_index` | `int64` | 任务索引（映射到 `meta/tasks.parquet`） |
+
+### 输出维度（按当前脚本）
+
+- `--robot-type fourier_gr2`（你当前 `run_convert.sh` 使用的配置）
+  - `action`: 35D = 29 关节 + 6 底盘动作
+  - `observation.state`: 45D = 29 关节 + 16 底盘状态
+- `--robot-type fourier_gr3`
+  - `action`: 37D = 31 关节 + 6 底盘动作
+  - `observation.state`: 45D = 29 关节 + 16 底盘状态
+
+## 转换时具体做了什么
+
+1. 自动扫描所有 `session/episode_*`。
+2. 读取各模态 parquet，并取 `timestamp_utc`。
+3. 生成统一时间轴（默认 `--fps 30`），对动作/状态/图像做最近邻重采样。
+4. `fourier_gr2` 下过滤 `waist_roll_joint` 和 `waist_pitch_joint`，并按 GR2 SDK 控制组顺序重排关节。
+5. 拼接：
+   - `action = joint_action + base_action`
+   - `observation.state = joint_state + base_state`
+6. RGB/Depth 重新编码成 mp4，并写入 LeRobot `meta/*` + `data/*`。
+
+## 快速运行
 
 ```bash
-# 环境要求：pyarrow, numpy, pandas, Pillow, ffmpeg
+# 环境要求: pyarrow numpy pandas Pillow ffmpeg
 conda activate lerobot
 
-# 使用预设参数运行
+# 预设命令（GR2）
 bash scripts/convert_tools/run_convert.sh
 
-# 或手动指定参数
+# 手动运行
 python scripts/convert_tools/convert_dora_to_lerobot.py \
-    --input ./pick_bottle_and_place_into_box \
-    --output ./pick_bottle_and_place_into_box_lerobot \
-    --task "pick bottle and place into box" \
-    --fps 30 \
-    --robot-type fourier_gr2 \
-    --video-codec libopenh264 \
-    --workers 4
+  --input ./pick_bottle_and_place_into_box \
+  --output ./pick_bottle_and_place_into_box_lerobot_gr2 \
+  --task "pick bottle and place into box" \
+  --fps 30 \
+  --robot-type fourier_gr2 \
+  --video-codec libopenh264 \
+  --workers 4
 ```
 
-> conda 环境的 ffmpeg 不带 libx264，请使用 `--video-codec libopenh264`。
+> conda 里的 ffmpeg 常不带 `libx264`，建议 `--video-codec libopenh264`。
 
-## 命令行参数
+## 参数
 
-| 参数 | 缩写 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--input` | `-i` | 必填 | Dora-Record session 目录（包含 `episode_*` 子目录） |
-| `--output` | `-o` | 必填 | 输出 LeRobot 数据集目录 |
-| `--task` | `-t` | `teleoperation` | 任务自然语言描述，VLA 训练时作为语言指令 |
-| `--fps` | | `30` | 目标帧率，所有传感器数据重采样到此帧率 |
-| `--robot-type` | | `fourier_gr3` | 机器人类型标识 |
-| `--video-codec` | | `libx264` | 视频编码器（推荐 `libopenh264`） |
-| `--workers` | `-w` | `1` | 并行进程数，设为 CPU 核数一半可加速 3-4 倍 |
-| `--no-video` | | | 跳过图像/视频，只转换关节数据 |
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--input`/`-i` | 必填 | Dora 数据根目录（可包含 session 子目录） |
+| `--output`/`-o` | 必填 | LeRobot 输出目录 |
+| `--task`/`-t` | `teleoperation` | 任务文本 |
+| `--fps` | `30` | 输出帧率 |
+| `--video-codec` | `libx264` | 视频编码器 |
+| `--robot-type` | `fourier_gr3` | 机器人类型 |
+| `--workers`/`-w` | `1` | 并行进程数 |
+| `--no-video` | 关闭 | 不处理图像/视频 |
 
-## 转换流程
+## 相关文档
 
-```
-Dora-Record                          LeRobot v3.0
-┌─────────────────┐                  ┌──────────────────────┐
-│ action.parquet  │─┐                │ data/chunk-000/      │
-│ (31D, ~100Hz)   │ │  重采样+拼接   │   file-000.parquet   │
-│                 │ ├──────────────→ │   (action 35D,       │
-│ action.base     │ │   统一到       │    state 45D,        │
-│ (6D, ~100Hz)    │─┘   30fps       │    timestamps...)     │
-│                 │                  │                      │
-│ obs.state       │─┐               │ videos/              │
-│ (29D, ~60Hz)    │ ├──────────────→ │   camera_top/        │
-│ obs.base_state  │─┘               │     file-000.mp4     │
-│ (16D, ~60Hz)    │                  │     file-001.mp4     │
-│                 │  解码+编码       │   camera_top_depth/  │
-│ camera_top      │──────────────→   │     file-000.mp4     │
-│ (JPEG, ~30Hz)   │                  │                      │
-│ camera_depth    │──────────────→   │ meta/                │
-│ (PNG, ~30Hz)    │                  │   info.json          │
-└─────────────────┘                  │   stats.json         │
-                                     │   tasks.parquet      │
-                                     └──────────────────────┘
-```
-
-每个 episode 独立处理：读取 → 时间对齐 → 关节重排 → 编码视频 → 释放内存，峰值约 2GB/进程。
-
-## 关节维度映射
-
-转换时按 GR-2 SDK 控制组顺序重排关节，部署时可直接切片下发：
-
-**Action（35D）**= 29 关节 + 6 底盘速度
-
-| 维度 | 控制组 | 内容 |
-|------|--------|------|
-| 0-6 | left_manipulator | 左臂 7 关节 |
-| 7-13 | right_manipulator | 右臂 7 关节 |
-| 14-19 | left_hand | 左手 6 关节 |
-| 20-25 | right_hand | 右手 6 关节 |
-| 26-27 | head | 头部偏航/俯仰 |
-| 28 | waist | 腰部偏航 |
-| 29-34 | base | 底盘速度 6D |
-
-**State（45D）**= 29 关节 + 16 底盘状态
-
-| 维度 | 内容 |
-|------|------|
-| 0-28 | 29 关节状态（同 action 顺序） |
-| 29-31 | 底盘位置 (x, y, z) |
-| 32-35 | 底盘四元数 (qx, qy, qz, qw) |
-| 36-38 | 底盘欧拉角 (roll, pitch, yaw) |
-| 39-41 | IMU 加速度 (ax, ay, az) |
-| 42-44 | IMU 角速度 (wx, wy, wz) |
-
-## 项目结构
-
-```
-.
-├── scripts/convert_tools/
-│   ├── convert_dora_to_lerobot.py   # 核心转换脚本
-│   ├── run_convert.sh               # 快速运行脚本
-│   ├── CONVERT_GUIDE.md             # 完整转换指南
-│   ├── dora-record结构.md            # 输入格式详解
-│   ├── lerobot-gr2结构.md            # 输出格式详解
-│   ├── GR-2 各控制组参数详解.md       # 41 自由度关节参数
-│   └── GR2推理适配指南.md            # 模型推理部署示例
-└── CLAUDE.md
-```
-
-## 文档
-
-详细文档位于 [scripts/convert_tools/](scripts/convert_tools/)：
-
-- [CONVERT_GUIDE.md](scripts/convert_tools/CONVERT_GUIDE.md) — 完整转换指南、参数说明、常见问题
-- [GR2推理适配指南.md](scripts/convert_tools/GR2推理适配指南.md) — 策略模型推理部署代码示例
-
-## 上传数据集到 HuggingFace
-
-```bash
-# 上传到个人账号（自动用目录名作为 repo 名）
-bash upload_dataset.sh ./fourier/pick_bottle_and_place_into_box_lerobot_gr2
-
-# 上传到指定组织
-bash upload_dataset.sh ./fourier/pick_bottle_and_place_into_box_lerobot_gr2 FourierIntelligence
-```
-
-脚本会自动校验 LeRobot 格式、检查 HuggingFace 登录状态，确认后上传。
-
-## 依赖
-
-- Python 3.10+
-- pyarrow, numpy, pandas, Pillow
-- ffmpeg（系统安装或 conda 安装）
-- huggingface_hub（上传数据集时需要）
+- `scripts/convert_tools/dora-record结构.md`
+- `scripts/convert_tools/lerobot-gr2结构.md`
+- `scripts/convert_tools/CONVERT_GUIDE.md`
